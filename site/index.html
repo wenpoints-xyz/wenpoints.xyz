@@ -127,6 +127,14 @@
 
   .comic { font-family: var(--comic); }
 
+  /* guestbook entry bar (top of page) */
+  .gb-bar { display: block; box-sizing: border-box; width: 760px; max-width: 96vw; margin: 14px auto 0;
+    text-align: center; font-family: var(--comic); font-size: 18px; font-weight: bold; color: #fff;
+    background: var(--accent); padding: 10px; text-decoration: none; letter-spacing: 1px;
+    border: 4px solid; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2); }
+  .gb-bar:active { border-color: var(--bevel-dk) var(--accent-2) var(--accent-2) var(--bevel-dk); }
+  @media (max-width: 480px) { .gb-bar { font-size: 15px; } }
+
   /* ---- marquee ---- */
   marquee.bar {
     display: block; background: var(--panel-2);
@@ -334,6 +342,8 @@
     <span>$HELIXPOINT IS LIVE ON TRIPPY PUMP</span> &nbsp;•&nbsp; <a href="https://pump.trippyinj.xyz/launch/8">pump.trippyinj.xyz/launch/8</a> &nbsp;•&nbsp; AIRDROP COMING SOON™ &nbsp;•&nbsp; (Season 12 of waiting) &nbsp;•&nbsp; BUY NOW, POINT LATER &nbsp;•&nbsp; $HELIXPOINT IS LIVE ON TRIPPY PUMP &nbsp;•&nbsp; AIRDROP COMING SOON™
   </marquee>
 
+  <a class="gb-bar" href="/guestbook/">📖 SIGN THE $HELIXPOINT GUESTBOOK — NOW ON-CHAIN →</a>
+
   <div class="box">
 
     <!-- theme switcher -->
@@ -431,7 +441,7 @@
 
     <!-- badges -->
     <div class="badges">
-      <a href="#guestbook" id="guestbook-link" class="gbook">📖 Sign My Guestbook!!</a>
+      <a href="/guestbook/" class="gbook">📖 Sign My Guestbook!!</a>
       <a href="https://pump.trippyinj.xyz/launch/8" class="badge hot-badge"><span class="hot" style="color:#fff;">●</span> LIVE ON<br><b>TRIPPY PUMP</b><br>click 2 trade 🚀</a>
       <div class="badge">Best viewed in<br><b>Netscape Navigator 3.0</b><br>at 800x600</div>
       <div class="badge">Made with<br><b>Notepad.exe</b><br>and love 🩵</div>
@@ -494,10 +504,6 @@
   document.getElementById('claim-btn').addEventListener('click', function () {
     claimAttempts += 1; claimAttemptsEl.textContent = claimAttempts;
     showPopup('Claim delayed. Please check back next epoch.<br><br>In the meantime, $HELIXPOINT is live on <a href="' + PUMP_URL + '">Trippy Pump</a> — no claiming required.');
-  });
-  document.getElementById('guestbook-link').addEventListener('click', function (e) {
-    e.preventDefault();
-    showPopup('Guestbook is down for maintenance (since 1998). Try again soon™.<br><br>The <a href="' + PUMP_URL + '">Trippy Pump launch page</a> is up, though.');
   });
   Array.prototype.forEach.call(document.querySelectorAll('.popup-close'), function (b) {
     b.addEventListener('click', function () { overlayEl.style.display = 'none'; });
