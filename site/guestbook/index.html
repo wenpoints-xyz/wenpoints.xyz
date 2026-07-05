@@ -107,6 +107,9 @@
   .post-head { display:flex; justify-content:space-between; gap:10px; font-size:13px; margin-bottom:6px; }
   .post-addr { font-family:'Courier New',monospace; font-weight:bold; color:var(--accent-2); }
   .post-time { color:var(--ink-dim); }
+  .post-del { font-family:var(--comic); font-size:11px; cursor:pointer; color:#fff; background:var(--bad); padding:2px 8px; margin-left:8px;
+    border:2px solid; border-color:var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
+  .post-del[disabled] { opacity:.6; cursor:default; }
   .post-body { font-size:17px; line-height:1.45; white-space:pre-wrap; word-break:break-word; }
   .empty { text-align:center; padding:26px 14px; color:var(--ink); background:var(--panel-2); margin-top:16px;
     border:3px inset var(--bevel-dk); }
@@ -157,7 +160,7 @@
       </div>
     </div>
 
-    <div class="mocknote">⚠ <b>Mock preview</b> — wallet connect is real (Injective EVM), but posts are <b>not saved yet</b>. On-chain writes coming soon™.</div>
+    <div class="mocknote">🧪 <b>Testnet preview</b> — live on <b>Injective EVM Testnet</b>. Posts are real on-chain writes (test INJ). Mainnet flip coming soon™.</div>
 
     <div class="wallet-row">
       <button class="btn" id="connect-btn">🔌 Connect Wallet</button>
@@ -195,13 +198,15 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="chain.js"></script>
 <script>
 (function () {
   "use strict";
   var MAX = 280, PAGE = 10;
-  var INJ_HEX = "0x6f0"; // 1776
-  var INJ_PARAMS = { chainId: INJ_HEX, chainName: "Injective", rpcUrls: ["https://sentry.evm-rpc.injective.network/"],
-    nativeCurrency: { name: "Injective", symbol: "INJ", decimals: 18 }, blockExplorerUrls: ["https://blockscout.injective.network/"] };
+  // chain + contract come from chain.js CONFIG (flip there for testnet <-> mainnet)
+  var INJ_HEX = GB.CONFIG.CHAIN.idHex;
+  var INJ_PARAMS = { chainId: INJ_HEX, chainName: GB.CONFIG.CHAIN.name, rpcUrls: [GB.CONFIG.CHAIN.rpc],
+    nativeCurrency: GB.CONFIG.CHAIN.nativeCurrency, blockExplorerUrls: [GB.CONFIG.CHAIN.explorer] };
 
   var $ = function (id) { return document.getElementById(id); };
   var account = null, activeProvider = null;
@@ -224,13 +229,14 @@
     return Math.floor(s / 86400) + "d ago";
   }
 
-  /* ---------- posts (mock, in-memory) ---------- */
-  var posts = [
-    { addr: "0x9f3a2b7c1d4e5f60718293a4b5c6d7e8f9012345", text: "first!! wen points", ts: Date.now() - 3600e3 },
-    { addr: "0x1122334455667788990011223344556677889900", text: "signed from injective. bullish on nothing.", ts: Date.now() - 7200e3 },
-    { addr: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd", text: "under construction forever 🚧", ts: Date.now() - 86400e3 }
-  ];
+  /* ---------- posts (read from PostCreated events on Injective EVM) ---------- */
+  var posts = [];             // newest-first: { addr, text, ts, index(BigInt) }
   var shown = PAGE;
+  var lastBlock = GB.CONFIG.DEPLOY_BLOCK - 1;
+  var loading = true;
+  var pollTimer = null;
+  var deletedSet = {};        // index.toString() -> true (hidden by an admin)
+  var adminMode = false;      // connected account is an admin
 
   var postsEl = $("posts"), emptyEl = $("empty"), loadmoreEl = $("loadmore"), endEl = $("end");
 
@@ -240,21 +246,121 @@
     var addr = document.createElement("span"); addr.className = "post-addr"; addr.textContent = shortAddr(p.addr); // textContent = XSS-safe
     var time = document.createElement("span"); time.className = "post-time"; time.textContent = relTime(p.ts);
     head.appendChild(addr); head.appendChild(time);
+    if (adminMode) {
+      var del = document.createElement("button"); del.type = "button"; del.className = "post-del";
+      del.textContent = "🗑 delete"; del.setAttribute("aria-label", "Delete this post (admin)");
+      del.addEventListener("click", function () { doDelete(p.index, del); });
+      head.appendChild(del);
+    }
     var body = document.createElement("div"); body.className = "post-body"; body.textContent = p.text; // untrusted text rendered inert
     li.appendChild(head); li.appendChild(body);
     return li;
   }
   function renderList() {
     postsEl.textContent = "";
-    if (posts.length === 0) { emptyEl.hidden = false; loadmoreEl.hidden = true; endEl.hidden = true; return; }
+    var visible = posts.filter(function (p) { return !deletedSet[p.index.toString()]; });
+    if (visible.length === 0) { emptyEl.hidden = loading; loadmoreEl.hidden = true; endEl.hidden = true; return; }
     emptyEl.hidden = true;
-    var slice = posts.slice(0, shown);
+    var slice = visible.slice(0, shown);
     for (var i = 0; i < slice.length; i++) postsEl.appendChild(makePost(slice[i]));
-    var more = shown < posts.length;
+    var more = shown < visible.length;
     loadmoreEl.hidden = !more;
     endEl.hidden = more;
   }
   loadmoreEl.addEventListener("click", function () { shown += PAGE; renderList(); });
+
+  /* ---------- read posts from chain (PostCreated + PostDeleted events) ---------- */
+  var seenIndex = {};
+  async function ingest(logs) {
+    var added = false;
+    for (var i = 0; i < logs.length; i++) {
+      var t0 = (logs[i].topics[0] || "").toLowerCase();
+      if (t0 === GB.CONFIG.TOPIC_DELETE.toLowerCase()) {           // admin hid a post
+        deletedSet[GB.decodePostDeleted(logs[i]).index.toString()] = true; added = true; continue;
+      }
+      var d = GB.decodePostCreated(logs[i]);
+      var key = d.index.toString();
+      if (seenIndex[key]) continue;
+      seenIndex[key] = 1;
+      var ts = await GB.blockTime(d.blockNumber);
+      posts.push({ addr: d.author, text: d.message, ts: ts, index: d.index });
+      added = true;
+    }
+    if (added) posts.sort(function (a, b) { return a.index > b.index ? -1 : a.index < b.index ? 1 : 0; }); // newest-first
+    renderList();
+  }
+  async function loadInitial() {
+    $("shimmer").hidden = false;
+    try {
+      var latest = await GB.blockNumber();
+      var logs = await GB.getEvents(GB.CONFIG.DEPLOY_BLOCK, latest);
+      lastBlock = latest;
+      loading = false;
+      await ingest(logs);
+    } catch (e) {
+      loading = false; renderList();
+      toast("Couldn't load the guestbook — retrying…");
+      setTimeout(loadInitial, 6000); return;
+    } finally { $("shimmer").hidden = true; }
+    startPoll();
+  }
+  async function refresh() { // pull new events since lastBlock (after a write, and by the poll loop)
+    try {
+      var latest = await GB.blockNumber();
+      if (latest <= lastBlock) return;
+      var logs = await GB.getEvents(lastBlock + 1, latest);
+      lastBlock = latest;
+      await ingest(logs);
+    } catch (e) { /* transient RPC hiccup; next tick retries */ }
+  }
+  function startPoll() { if (!pollTimer) pollTimer = setInterval(refresh, 12000); } // live updates via polling
+  // confirm a write by watching for the post to appear (event/state is consistent across RPC
+  // nodes; eth_getTransactionReceipt by hash is flaky on Injective's load-balanced RPC)
+  function waitForPost(message, author, timeoutMs) {
+    var start = Date.now(), a = author.toLowerCase();
+    return new Promise(function (resolve) {
+      (function tick() {
+        refresh().then(function () {
+          if (posts.some(function (p) { return p.text === message && p.addr.toLowerCase() === a; })) return resolve(true);
+          if (Date.now() - start > timeoutMs) return resolve(false);
+          setTimeout(tick, 2500);
+        });
+      })();
+    });
+  }
+  function waitForDelete(index, timeoutMs) {
+    var start = Date.now(), k = index.toString();
+    return new Promise(function (resolve) {
+      (function tick() {
+        refresh().then(function () {
+          if (deletedSet[k]) return resolve(true);
+          if (Date.now() - start > timeoutMs) return resolve(false);
+          setTimeout(tick, 2500);
+        });
+      })();
+    });
+  }
+  async function doDelete(index, btn) {
+    if (!adminMode || !account) return;
+    var prev = btn.textContent; btn.disabled = true; btn.textContent = "deleting…";
+    try {
+      await GB.sendDelete(activeProvider, account, index);
+      await waitForDelete(index, 120000);
+      deletedSet[index.toString()] = true; renderList();
+      toast("Post deleted.");
+    } catch (err) {
+      var code = err && (err.code || (err.data && err.data.originalError && err.data.originalError.code));
+      toast(code === 4001 ? "Delete rejected." : "Delete failed.");
+      btn.disabled = false; btn.textContent = prev;
+    }
+  }
+  // detect whether the connected account is an admin -> show delete controls
+  function checkAdmin() {
+    if (!account) { if (adminMode) { adminMode = false; renderList(); } return; }
+    GB.isAdmin(account).then(function (a) {
+      if (a !== adminMode) { adminMode = a; renderList(); if (a) toast("Admin mode — you can delete posts."); }
+    });
+  }
 
   /* ---------- compose ---------- */
   var msgEl = $("msg"), counterEl = $("counter"), signBtn = $("sign-btn");
@@ -265,18 +371,23 @@
     signBtn.disabled = !account || sanitize(msgEl.value).length === 0;
   }
   msgEl.addEventListener("input", updateCounter);
-  signBtn.addEventListener("click", function () {
+  signBtn.addEventListener("click", async function () {
     if (!account) { openWallet(); return; }
     var text = sanitize(msgEl.value);
     if (!text) { toast("Write something first."); return; }
     signBtn.disabled = true; signBtn.textContent = "Signing…";
-    // mock: no chain write — just prepend locally
-    setTimeout(function () {
-      posts.unshift({ addr: account, text: text, ts: Date.now() });
-      msgEl.value = ""; updateCounter(); renderList();
+    try {
+      await GB.sendPost(activeProvider, account, text); // returns a hash; we confirm via the post appearing
+      signBtn.textContent = "Confirming…";
+      var landed = await waitForPost(text, account, 120000);
+      if (landed) { msgEl.value = ""; updateCounter(); toast("Signed on-chain! 🎉"); }
+      else { toast("Sent — still confirming, it'll appear shortly."); }
+    } catch (err) {
+      var code = err && (err.code || (err.data && err.data.originalError && err.data.originalError.code));
+      toast(code === 4001 ? "Transaction rejected." : (code === -32000 ? "Not enough INJ for gas." : "Post failed — check the explorer."));
+    } finally {
       signBtn.textContent = "Sign"; updateGating();
-      toast("Signed! (mock — not saved on-chain yet)");
-    }, 150);
+    }
   });
   function updateGating() {
     var connected = !!account;
@@ -384,6 +495,7 @@
     if (account) { accEl.textContent = shortAddr(account); accEl.hidden = false; disc.hidden = false; conn.hidden = true; }
     else { accEl.hidden = true; disc.hidden = true; conn.hidden = false; $("netbanner").style.display = "none"; }
     updateGating();
+    checkAdmin();
   }
   function errCode(err) { return err && (err.code || (err.data && err.data.originalError && err.data.originalError.code)); }
   async function refreshChainBanner() {
@@ -462,13 +574,14 @@
 
   /* ---------- init ---------- */
   updateGating();
-  renderList();
+  loadInitial();
 
-  /* E2E test seam — only active with ?e2e=1 in the URL; never runs in normal use. */
+  /* E2E test seam — only active with ?e2e=1; drives the list without hitting chain. */
   if (location.search.indexOf("e2e=1") > -1) {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     window.__gb = {
-      seedMany: function (n) { posts = []; for (var i = 0; i < n; i++) posts.push({ addr: "0x" + String(i).padStart(40, "0"), text: "post #" + i, ts: Date.now() - i * 1000 }); shown = PAGE; renderList(); },
-      clear: function () { posts = []; renderList(); }
+      seedMany: function (n) { loading = false; posts = []; seenIndex = {}; for (var i = 0; i < n; i++) posts.push({ addr: "0x" + String(i).padStart(40, "0"), text: "post #" + i, ts: Date.now() - i * 1000, index: BigInt(n - i) }); shown = PAGE; renderList(); },
+      clear: function () { loading = false; posts = []; seenIndex = {}; renderList(); }
     };
   }
 })();
