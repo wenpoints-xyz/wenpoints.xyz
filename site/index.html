@@ -8,7 +8,7 @@
 /* set theme before paint to avoid a flash */
 (function () {
   try {
-    var t = localStorage.getItem('hp-theme') || 'system';
+    var t = localStorage.getItem('hp-theme') || 'dark';
     var sysLight = window.matchMedia('(prefers-color-scheme: light)').matches;
     var eff = t === 'system' ? (sysLight ? 'light' : 'dark') : t;
     document.documentElement.setAttribute('data-theme', eff);
@@ -426,8 +426,8 @@
       btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-set') === pref ? 'true' : 'false');
     });
   }
-  var pref = 'system';
-  try { pref = localStorage.getItem('hp-theme') || 'system'; } catch (e) {}
+  var pref = 'dark';
+  try { pref = localStorage.getItem('hp-theme') || 'dark'; } catch (e) {}
   apply(pref);
   Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function (btn) {
     btn.addEventListener('click', function () {
