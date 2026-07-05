@@ -7,13 +7,13 @@
   // ---- config: flip CHAIN + CONTRACT + DEPLOY_BLOCK for testnet <-> mainnet ----
   var CONFIG = {
     CHAIN: {
-      idHex: "0x59f", id: 1439, name: "Injective EVM Testnet",
-      rpc: "https://k8s.testnet.json-rpc.injective.network/",
-      explorer: "https://testnet.blockscout.injective.network",
+      idHex: "0x6f0", id: 1776, name: "Injective",
+      rpc: "https://sentry.evm-rpc.injective.network/",
+      explorer: "https://blockscout.injective.network",
       nativeCurrency: { name: "Injective", symbol: "INJ", decimals: 18 }
     },
-    CONTRACT: "0xEA9A00Fc317781E272165D323C65a9B654c4284c", // UUPS proxy
-    DEPLOY_BLOCK: 132603458,
+    CONTRACT: "0xc71D862cD4E6b35F6aA29Fd908c27d1c4b2406EA", // UUPS proxy (mainnet)
+    DEPLOY_BLOCK: 172959998,
     SEL_POST: "0x8ee93cf3",         // post(string)
     SEL_DELETE: "0x094cd5ee",       // deletePost(uint256)
     SEL_ISADMIN: "0x24d7806c",      // isAdmin(address)
