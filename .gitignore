@@ -4,3 +4,7 @@ playwright-report/
 .env
 .x-session.json
 .gstack/
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/broadcast/

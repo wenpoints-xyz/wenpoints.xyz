@@ -1,0 +1,22 @@
+name: Contracts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ['contracts/**', '.github/workflows/contracts.yml']
+
+jobs:
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: fetch forge-std
+        run: git clone --depth 1 https://github.com/foundry-rs/forge-std contracts/lib/forge-std
+      - name: build
+        run: cd contracts && forge build --sizes
+      - name: test
+        run: cd contracts && forge test -vvv
+      - name: gas snapshot
+        run: cd contracts && forge snapshot
