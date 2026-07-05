@@ -12,8 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
-      - name: fetch forge-std
-        run: git clone --depth 1 https://github.com/foundry-rs/forge-std contracts/lib/forge-std
+      - name: fetch libs
+        run: |
+          git clone --depth 1 https://github.com/foundry-rs/forge-std contracts/lib/forge-std
+          git clone --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts contracts/lib/openzeppelin-contracts
+          git clone --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable contracts/lib/openzeppelin-contracts-upgradeable
       - name: build
         run: cd contracts && forge build --sizes
       - name: test

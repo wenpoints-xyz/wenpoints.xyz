@@ -2,18 +2,20 @@
 pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Guestbook} from "../src/Guestbook.sol";
 
-/// Deploy with:
-///   forge script script/Deploy.s.sol:Deploy --rpc-url <injective-evm-rpc> --private-key <key> --broadcast
-/// Testnet RPC: https://k8s.testnet.json-rpc.injective.network/   (chainId 1439)
-/// Mainnet RPC: https://sentry.evm-rpc.injective.network/         (chainId 1776)
+/// Deploys the implementation + a UUPS proxy, initializing the deployer as first admin.
+///   forge script script/Deploy.s.sol:Deploy --rpc-url <rpc> --private-key <key> --broadcast
+/// Testnet: https://k8s.testnet.json-rpc.injective.network/ (1439) | Mainnet: https://sentry.evm-rpc.injective.network/ (1776)
+/// Use the PROXY address in the frontend.
 contract Deploy is Script {
     function run() external {
         vm.startBroadcast();
-        Guestbook gb = new Guestbook();
+        Guestbook impl = new Guestbook();
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Guestbook.initialize, ()));
         vm.stopBroadcast();
-        console2.log("Guestbook deployed at:", address(gb));
-        console2.log("Record this address AND the deploy block for the frontend config.");
+        console2.log("implementation:", address(impl));
+        console2.log("PROXY (use in frontend):", address(proxy));
     }
 }

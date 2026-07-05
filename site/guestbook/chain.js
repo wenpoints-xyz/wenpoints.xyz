@@ -1,6 +1,6 @@
-/* chain.js — zero-dependency Injective EVM helpers for the $HELIXPOINT Guestbook.
-   Reads posts from PostCreated event logs; writes via eth_sendTransaction.
-   Exposed as window.GB. No libraries — hand-rolled ABI for one string arg + one event. */
+/* chain.js — zero-dependency Injective EVM helpers for the $HELIXPOINT Guestbook (upgradeable, UUPS).
+   Reads posts from PostCreated/PostDeleted events; writes post/deletePost via eth_sendTransaction.
+   Exposed as window.GB. No libraries — hand-rolled ABI for the few shapes used here. */
 (function () {
   "use strict";
 
@@ -12,11 +12,14 @@
       explorer: "https://testnet.blockscout.injective.network",
       nativeCurrency: { name: "Injective", symbol: "INJ", decimals: 18 }
     },
-    CONTRACT: "0x2b81Aa221c93FE2dd4f21EA992316B102b090674",
-    DEPLOY_BLOCK: 132601081,
-    POST_SELECTOR: "0x8ee93cf3", // keccak256("post(string)")[:4]
-    TOPIC_POSTCREATED: "0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac", // keccak256("PostCreated(address,uint256,string)")
-    LOG_CHUNK: 9000 // stay under public-RPC eth_getLogs range caps
+    CONTRACT: "0xEA9A00Fc317781E272165D323C65a9B654c4284c", // UUPS proxy
+    DEPLOY_BLOCK: 132603458,
+    SEL_POST: "0x8ee93cf3",         // post(string)
+    SEL_DELETE: "0x094cd5ee",       // deletePost(uint256)
+    SEL_ISADMIN: "0x24d7806c",      // isAdmin(address)
+    TOPIC_POST: "0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac",   // PostCreated(address,uint256,string)
+    TOPIC_DELETE: "0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3",  // PostDeleted(uint256,address)
+    LOG_CHUNK: 9000
   };
 
   // ---- hex / utf8 helpers ----
@@ -28,27 +31,33 @@
   function hexToUtf8(h) { return new TextDecoder().decode(hexToBytes(h)); }
   function toBigInt(hex) { return BigInt(hex.indexOf("0x") === 0 ? hex : "0x" + hex); }
 
-  // ---- encode post(string) calldata: selector + [offset 0x20][len][utf8 bytes padded] ----
+  // ---- calldata encoders ----
   function encodePostCalldata(message) {
     var bytes = utf8Bytes(message);
     var offset = (32).toString(16).padStart(64, "0");
     var len = bytes.length.toString(16).padStart(64, "0");
-    var data = pad32(bytesToHex(bytes));
-    return CONFIG.POST_SELECTOR + offset + len + data;
+    return CONFIG.SEL_POST + offset + len + pad32(bytesToHex(bytes));
+  }
+  function encodeDeleteCalldata(index) {
+    return CONFIG.SEL_DELETE + BigInt(index).toString(16).padStart(64, "0");
   }
 
-  // ---- decode a PostCreated log -> { author, index, message, blockNumber } ----
-  // topics: [topic0, author(32B), index(32B)]; data = abi.encode(string) = [offset][len][bytes]
+  // ---- event decoders ----
+  // PostCreated: topics [t0, author, index]; data = abi.encode(string)
   function decodePostCreated(log) {
-    var author = "0x" + strip0x(log.topics[1]).slice(-40);
-    var index = toBigInt(log.topics[2]);
     var d = strip0x(log.data);
-    var len = parseInt(d.slice(64, 128), 16);               // second word = string length
-    var msgHex = d.slice(128, 128 + len * 2);               // then the utf8 bytes
-    return { author: author, index: index, message: hexToUtf8(msgHex), blockNumber: parseInt(log.blockNumber, 16) };
+    var len = parseInt(d.slice(64, 128), 16);
+    return {
+      author: "0x" + strip0x(log.topics[1]).slice(-40),
+      index: toBigInt(log.topics[2]),
+      message: hexToUtf8(d.slice(128, 128 + len * 2)),
+      blockNumber: parseInt(log.blockNumber, 16)
+    };
   }
+  // PostDeleted: topics [t0, index, by]
+  function decodePostDeleted(log) { return { index: toBigInt(log.topics[1]) }; }
 
-  // ---- raw JSON-RPC over HTTP (reads; no wallet needed) ----
+  // ---- JSON-RPC over HTTP (reads) ----
   var _id = 0;
   function rpc(method, params) {
     return fetch(CONFIG.CHAIN.rpc, {
@@ -61,8 +70,8 @@
   }
   function blockNumber() { return rpc("eth_blockNumber", []).then(function (h) { return parseInt(h, 16); }); }
 
-  // eth_getLogs for PostCreated across [from,to], chunked to respect range caps
-  function getPostLogs(fromBlock, toBlock) {
+  // fetch both PostCreated + PostDeleted logs across [from,to], chunked
+  function getEvents(fromBlock, toBlock) {
     var chunks = [], f = fromBlock;
     while (f <= toBlock) { var t = Math.min(f + CONFIG.LOG_CHUNK, toBlock); chunks.push([f, t]); f = t + 1; }
     var out = [];
@@ -70,15 +79,13 @@
       return p.then(function () {
         return rpc("eth_getLogs", [{
           address: CONFIG.CONTRACT,
-          topics: [CONFIG.TOPIC_POSTCREATED],
-          fromBlock: "0x" + rng[0].toString(16),
-          toBlock: "0x" + rng[1].toString(16)
+          topics: [[CONFIG.TOPIC_POST, CONFIG.TOPIC_DELETE]],
+          fromBlock: "0x" + rng[0].toString(16), toBlock: "0x" + rng[1].toString(16)
         }]).then(function (logs) { out = out.concat(logs); });
       });
     }, Promise.resolve()).then(function () { return out; });
   }
 
-  // block timestamp cache (event has no timestamp; read it from the block)
   var _blockTs = {};
   function blockTime(bn) {
     if (_blockTs[bn]) return Promise.resolve(_blockTs[bn]);
@@ -88,27 +95,27 @@
     });
   }
 
-  // send a post via the connected wallet; returns tx hash
+  // is `addr` an admin? (eth_call isAdmin(address))
+  function isAdmin(addr) {
+    var data = CONFIG.SEL_ISADMIN + strip0x(addr).toLowerCase().padStart(64, "0");
+    return rpc("eth_call", [{ to: CONFIG.CONTRACT, data: data }, "latest"]).then(function (res) {
+      return toBigInt(res || "0x0") === 1n;
+    }).catch(function () { return false; });
+  }
+
+  // writes via the connected wallet
   function sendPost(provider, from, message) {
     return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: CONFIG.CONTRACT, data: encodePostCalldata(message) }] });
   }
-  // poll a tx receipt until mined (or timeout ms)
-  function waitReceipt(hash, timeoutMs) {
-    var start = Date.now();
-    return new Promise(function (resolve, reject) {
-      (function tick() {
-        rpc("eth_getTransactionReceipt", [hash]).then(function (r) {
-          if (r) return resolve(r);
-          if (Date.now() - start > (timeoutMs || 90000)) return reject(new Error("timeout"));
-          setTimeout(tick, 2500);
-        }).catch(function () { setTimeout(tick, 2500); });
-      })();
-    });
+  function sendDelete(provider, from, index) {
+    return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: CONFIG.CONTRACT, data: encodeDeleteCalldata(index) }] });
   }
 
   window.GB = {
-    CONFIG: CONFIG, encodePostCalldata: encodePostCalldata, decodePostCreated: decodePostCreated,
-    rpc: rpc, blockNumber: blockNumber, getPostLogs: getPostLogs, blockTime: blockTime,
-    sendPost: sendPost, waitReceipt: waitReceipt
+    CONFIG: CONFIG,
+    encodePostCalldata: encodePostCalldata, encodeDeleteCalldata: encodeDeleteCalldata,
+    decodePostCreated: decodePostCreated, decodePostDeleted: decodePostDeleted,
+    rpc: rpc, blockNumber: blockNumber, getEvents: getEvents, blockTime: blockTime, isAdmin: isAdmin,
+    sendPost: sendPost, sendDelete: sendDelete
   };
 })();

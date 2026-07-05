@@ -1,7 +1,8 @@
 const { test, expect } = require('@playwright/test');
 
 const RPC = '**k8s.testnet.json-rpc.injective.network**';
-const TOPIC = '0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac';
+const TOPIC = '0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac';        // PostCreated
+const TOPIC_DEL = '0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3';   // PostDeleted
 const BASE = 132601081;          // must be >= chain.js CONFIG.DEPLOY_BLOCK
 const LATEST = BASE + 2000;
 
@@ -16,10 +17,14 @@ function makeLog(from, index, message, block) {
   while (data.length % 64 !== 0) data += '0';
   return { topics: [TOPIC, author, idx], data: '0x' + offset + len + data, blockNumber: '0x' + block.toString(16) };
 }
+function makeDeleteLog(index, block) {
+  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
+  return { topics: [TOPIC_DEL, idx, '0x' + '0'.repeat(64)], data: '0x', blockNumber: '0x' + block.toString(16) };
+}
 
 // Mock the JSON-RPC endpoint chain.js reads from. `state` lets a test mutate logs/block mid-flow.
 async function routeChain(page, state) {
-  state = Object.assign({ logs: [], latest: LATEST }, state);
+  state = Object.assign({ logs: [], latest: LATEST, admin: false }, state);
   page._chain = state;
   await page.route(RPC, async (route) => {
     const req = JSON.parse(route.request().postData() || '{}');
@@ -27,6 +32,7 @@ async function routeChain(page, state) {
     if (req.method === 'eth_blockNumber') result = '0x' + state.latest.toString(16);
     else if (req.method === 'eth_getLogs') result = state.logs;
     else if (req.method === 'eth_getBlockByNumber') result = { timestamp: '0x' + Math.floor(Date.now() / 1000).toString(16) };
+    else if (req.method === 'eth_call') result = '0x' + (state.admin ? '1' : '0').padStart(64, '0'); // isAdmin(address)
     else if (req.method === 'eth_getTransactionReceipt') { if (state.onReceipt) state.onReceipt(); result = { status: '0x1', blockNumber: '0x1' }; }
     else result = null;
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
@@ -132,4 +138,33 @@ test('switching the wallet account updates the UI; locking disconnects', async (
   await page.evaluate(() => window.__emitAccounts([]));
   await expect(page.locator('#connect-btn')).toBeVisible();
   await expect(page.locator('#msg')).toBeDisabled();
+});
+
+test('a post flagged by PostDeleted is hidden', async ({ page }) => {
+  await routeChain(page, { logs: [
+    makeLog('0x1111111111111111111111111111111111111111', 0, 'keep me', BASE + 10),
+    makeLog('0x2222222222222222222222222222222222222222', 1, 'delete me', BASE + 11),
+    makeDeleteLog(1, BASE + 12),
+  ] });
+  await page.goto('/guestbook/');
+  await expect(page.locator('#posts .post')).toHaveCount(1);
+  await expect(page.locator('#posts .post-body').first()).toHaveText('keep me');
+});
+
+test('a non-admin sees no delete controls', async ({ page }) => {
+  await routeChain(page, { admin: false, logs: [makeLog('0x1111111111111111111111111111111111111111', 0, 'hi', BASE + 10)] });
+  await connect(page);
+  await expect(page.locator('#posts .post')).toHaveCount(1);
+  await expect(page.locator('.post-del')).toHaveCount(0);
+});
+
+test('an admin sees delete controls and can delete a post', async ({ page }) => {
+  const state = await routeChain(page, { admin: true, logs: [makeLog('0x1111111111111111111111111111111111111111', 0, 'bye', BASE + 10)] });
+  await connect(page);
+  await expect(page.locator('.post-del')).toHaveCount(1);   // admin sees the delete control
+  await page.click('.post-del');                            // sends deletePost tx
+  state.latest = LATEST + 1;                                 // reveal the PostDeleted event for the confirm poll
+  state.logs = state.logs.concat([makeDeleteLog(0, LATEST + 1)]);
+  await expect(page.locator('#posts .post')).toHaveCount(0); // hidden once the delete confirms
+  expect(await page.evaluate(() => window.__calls)).toContain('eth_sendTransaction');
 });
