@@ -366,7 +366,13 @@
       account = accts[0]; activeProvider = provider;
       closeWallet(); updateConnectedUI(); ensureInjective();
       if (provider.on) {
-        provider.on("accountsChanged", function (a) { account = (a && a[0]) || null; updateConnectedUI(); });
+        // reflect account switches (and wallet lock) live from Keplr / MetaMask / etc.
+        provider.on("accountsChanged", function (a) {
+          var na = a && a[0];
+          account = isAddr(na) ? na : null; // null when the wallet is locked or access revoked
+          if (account) toast("Switched to " + shortAddr(account));
+          updateConnectedUI();
+        });
         provider.on("chainChanged", function () { refreshChainBanner(); });
       }
     } catch (err) {

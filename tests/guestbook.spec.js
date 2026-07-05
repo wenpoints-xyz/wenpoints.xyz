@@ -10,8 +10,10 @@ const MOCK = `
       if (method === 'eth_chainId') return '0x6f0';
       return null;
     },
-    on() {}
+    on(ev, cb) { cbs[ev] = cb; }
   };
+  const cbs = {};
+  window.__emitAccounts = (a) => cbs.accountsChanged && cbs.accountsChanged(a);
   window.__announceMock = () =>
     window.dispatchEvent(new CustomEvent('eip6963:announceProvider', {
       detail: { info: { name: 'MockMetaMask', rdns: 'io.metamask', icon: '' }, provider: mock }
@@ -92,6 +94,16 @@ const INJECTED = `
   };
 })();
 `;
+
+test('switching the wallet account updates the UI; locking disconnects', async ({ page }) => {
+  await connect(page);
+  await expect(page.locator('#account')).toHaveText('0xAbC0…1234');
+  await page.evaluate(() => window.__emitAccounts(['0xBBB0000000000000000000000000000000000002']));
+  await expect(page.locator('#account')).toHaveText('0xBBB0…0002');
+  await page.evaluate(() => window.__emitAccounts([])); // wallet locked / access revoked
+  await expect(page.locator('#connect-btn')).toBeVisible();
+  await expect(page.locator('#msg')).toBeDisabled();
+});
 
 test('a Brave-style injected wallet (no EIP-6963) appears and connects', async ({ page }) => {
   await page.addInitScript(INJECTED);
