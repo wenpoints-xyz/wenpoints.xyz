@@ -4,6 +4,50 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$HELIXPOINT — THE POINTS TOKEN — WELCOME TO MY HOMEPAGE</title>
+
+<!-- SEO -->
+<meta name="description" content="$HELIXPOINT — the points token on Injective. Points accrue forever, redeemable for nothing. Airdrop coming Soon™. Live on Trippy Pump. Under construction since 1997.">
+<meta name="keywords" content="HELIXPOINT, $HELIXPOINT, Injective, INJ, points token, Trippy Pump, crypto, airdrop, memecoin, wenpoints">
+<meta name="author" content="$HELIXPOINT">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#3d8bff">
+<link rel="canonical" href="https://wenpoints.xyz/">
+
+<!-- favicon -->
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="shortcut icon" href="/icon.png">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="$HELIXPOINT">
+<meta property="og:title" content="$HELIXPOINT — THE POINTS TOKEN">
+<meta property="og:description" content="Points that never pay out. The points token on Injective. Live on Trippy Pump 🚀 Under construction since 1997.">
+<meta property="og:url" content="https://wenpoints.xyz/">
+<meta property="og:image" content="https://wenpoints.xyz/og-banner.png">
+<meta property="og:image:width" content="639">
+<meta property="og:image:height" content="211">
+<meta property="og:image:alt" content="$HELIXPOINT — pixel coin with a green DNA helix">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@helixpoints">
+<meta name="twitter:creator" content="@helixpoints">
+<meta name="twitter:title" content="$HELIXPOINT — THE POINTS TOKEN">
+<meta name="twitter:description" content="Points that never pay out. The points token on Injective. Live on Trippy Pump 🚀 Under construction since 1997.">
+<meta name="twitter:image" content="https://wenpoints.xyz/og-banner.png">
+<meta name="twitter:image:alt" content="$HELIXPOINT — pixel coin with a green DNA helix">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "$HELIXPOINT",
+  "url": "https://wenpoints.xyz/",
+  "description": "The points token on Injective. Points accrue forever, redeemable for nothing. Live on Trippy Pump.",
+  "image": "https://wenpoints.xyz/og-banner.png"
+}
+</script>
 <script>
 /* set theme before paint to avoid a flash */
 (function () {
@@ -177,6 +221,12 @@
     border: 5px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
   }
   #claim-btn:active { border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  #turbo-btn {
+    font-family: 'Comic Sans MS', cursive; font-size: 16px; font-weight: bold;
+    color: #fff; background: var(--accent); padding: 6px 20px; cursor: pointer; letter-spacing: 1px;
+    border: 3px solid; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2);
+  }
+  #turbo-btn:active { border-color: var(--bevel-dk) var(--accent-2) var(--accent-2) var(--bevel-dk); }
   .claim-note { font-size: 15px; color: var(--ink-dim); margin-top: 14px; }
   .claim-note b { color: var(--accent-2); }
   .hot { animation: blink96 1s step-end infinite; color: var(--accent); font-weight: bold; }
@@ -303,6 +353,7 @@
     <div class="counter">
       <div class="cap">Your points (redeemable for: nothing)</div>
       <div id="points">0</div>
+      <div style="margin-top:16px;"><button id="turbo-btn">⚡ TURBO ⚡</button></div>
       <div class="fine">* points accrue forever. redemption window: TBA (since 2024)</div>
       <div class="fine"><a href="https://pump.trippyinj.xyz/launch/8">tired of waiting? the actual token trades here →</a></div>
     </div>
@@ -349,6 +400,7 @@
         <div><b>Q: Wen airdrop?</b><br><span class="a">A: Soon.</span></div>
         <div><b>Q: Wat do points do?</b><br><span class="a">A: They accumulate.</span></div>
         <div><b>Q: Is this financial advice?</b><br><span class="a">A: It is not even advice.</span></div>
+        <div><b>Q: Will you dump on me?</b><br><span class="a">A: Probably not.</span></div>
         <div><b>Q: How do I redeem my points?</b><br><span class="a">A: Great question! Check back next epoch.</span></div>
       </div>
     </div>
@@ -399,10 +451,16 @@
   var popupMessageEl = document.getElementById('popup-message');
   document.getElementById('visitor-number').textContent = String(VISITOR_NUMBER).padStart(6, '0');
 
+  function render() { pointsEl.textContent = points.toLocaleString('en-US'); }
   setInterval(function () {
     points += Math.floor(POINTS_PER_SECOND / 10) + Math.floor(Math.random() * 7);
-    pointsEl.textContent = points.toLocaleString('en-US');
+    render();
   }, 100);
+
+  document.getElementById('turbo-btn').addEventListener('click', function () {
+    points += 2000 + Math.floor(Math.random() * 6000); /* +2,000–7,999 instantly */
+    render();
+  });
 
   function showPopup(html) { popupMessageEl.innerHTML = html; overlayEl.style.display = 'flex'; }
   document.getElementById('claim-btn').addEventListener('click', function () {
