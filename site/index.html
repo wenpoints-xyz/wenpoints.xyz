@@ -1,254 +1,442 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$HELIXPOINT — THE POINTS TOKEN — WELCOME TO MY HOMEPAGE</title>
+<script>
+/* set theme before paint to avoid a flash */
+(function () {
+  try {
+    var t = localStorage.getItem('hp-theme') || 'system';
+    var sysLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    var eff = t === 'system' ? (sysLight ? 'light' : 'dark') : t;
+    document.documentElement.setAttribute('data-theme', eff);
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+})();
+</script>
 <style>
-@keyframes blink96 { 0%, 49% { visibility: visible; } 50%, 100% { visibility: hidden; } }
-@keyframes rainbowshift { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
-@keyframes spin96 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes stripescroll { from { background-position: 0 0; } to { background-position: 56px 0; } }
-@keyframes wobble96 { 0% { transform: rotate(-14deg) scale(1); } 25% { transform: rotate(-10deg) scale(1.1); } 50% { transform: rotate(-7deg) scale(1.16); } 75% { transform: rotate(-11deg) scale(1.06); } 100% { transform: rotate(-14deg) scale(1); } }
-@keyframes pulse96 { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
-html, body { margin: 0; overflow-x: hidden; }
-#claim-btn:active { border-top: 5px solid #555555; border-left: 5px solid #555555; border-bottom: 5px solid #ffffff; border-right: 5px solid #ffffff; }
-.pump-btn:active { border-top: 6px solid #550055 !important; border-left: 6px solid #550055 !important; border-bottom: 6px solid #ff99ff !important; border-right: 6px solid #ff99ff !important; }
-.gifbar { display: block; width: 100%; height: 16px; image-rendering: pixelated; margin: 48px 0; border: 0; }
-@media (max-width: 480px) {
-  .main-box { padding: 14px 8px !important; }
-  .hero-title { font-size: 34px !important; -webkit-text-stroke: 1px #ffffff !important; }
-  .hero-sub { font-size: 18px !important; }
-  .hero-tagline { font-size: 14px !important; }
-  .starburst { width: 60px !important; height: 60px !important; top: 0 !important; right: 4px !important; }
-  .starburst span { font-size: 11px !important; }
-  marquee { font-size: 15px !important; }
-  .pump-btn { font-size: 16px !important; padding: 12px 16px !important; }
-  #points { font-size: 24px !important; letter-spacing: 2px !important; padding: 4px 10px !important; }
-  #claim-btn { font-size: 20px !important; padding: 10px 22px !important; }
-  table { font-size: 15px !important; }
-  td, th { padding: 7px !important; }
-  #visitor-number { font-size: 20px !important; letter-spacing: 3px !important; }
-  .gifbar { margin: 30px 0 !important; }
-  .popup-box { width: 92vw !important; }
-}
+  /* ---- palette: dark + terminal blue, two themes ---- */
+  :root, [data-theme="dark"] {
+    --bg:       #060b16;
+    --star:     #22406e;
+    --panel:    #0c1a2e;
+    --panel-2:  #071121;
+    --ink:      #cbdcf3;
+    --ink-dim:  #61809f;
+    --accent:   #3d8bff;
+    --accent-2: #7ec8ff;
+    --bevel-lt: #2c4d78;
+    --bevel-dk: #020610;
+    --led:      #59a6ff;
+    --led-bg:   #06131f;
+    --btn:      #1a2a40;
+    --btn-ink:  #dce8fa;
+    --stripe-a: #14385f;
+    --stripe-b: #05101d;
+  }
+  [data-theme="light"] {
+    --bg:       #c6d5ea;
+    --star:     #9db6d8;
+    --panel:    #dce7f6;
+    --panel-2:  #eef4fc;
+    --ink:      #0b2038;
+    --ink-dim:  #55708f;
+    --accent:   #1a5fb4;
+    --accent-2: #2f81f7;
+    --bevel-lt: #ffffff;
+    --bevel-dk: #8299b6;
+    --led:      #0a4fb0;
+    --led-bg:   #cde0f6;
+    --btn:      #dfe8f5;
+    --btn-ink:  #0b2038;
+    --stripe-a: #9bb6da;
+    --stripe-b: #34517a;
+  }
+
+  @keyframes blink96 { 0%, 49% { visibility: visible; } 50%, 100% { visibility: hidden; } }
+  @keyframes stripescroll { from { background-position: 0 0; } to { background-position: 56px 0; } }
+  @keyframes wobble96 { 0% { transform: rotate(-14deg) scale(1); } 25% { transform: rotate(-10deg) scale(1.1); } 50% { transform: rotate(-7deg) scale(1.16); } 75% { transform: rotate(-11deg) scale(1.06); } 100% { transform: rotate(-14deg) scale(1); } }
+  @keyframes pulse96 { 0% { transform: scale(1); } 50% { transform: scale(1.06); } 100% { transform: scale(1); } }
+
+  html, body { margin: 0; overflow-x: hidden; }
+  body {
+    min-height: 100vh;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, var(--ink), transparent),
+      radial-gradient(1px 1px at 90px 110px, var(--star), transparent),
+      radial-gradient(2px 2px at 160px 60px, var(--star), transparent),
+      radial-gradient(1px 1px at 210px 140px, var(--ink), transparent),
+      radial-gradient(1px 1px at 60px 170px, var(--star), transparent),
+      radial-gradient(2px 2px at 130px 190px, var(--ink), transparent),
+      radial-gradient(1px 1px at 250px 90px, var(--star), transparent);
+    background-size: 280px 220px;
+    font-family: 'Times New Roman', Times, serif;
+    color: var(--ink);
+    padding-bottom: 80px;
+  }
+  a { color: var(--accent-2); }
+
+  .comic { font-family: 'Comic Sans MS', 'Comic Sans', cursive; }
+
+  /* ---- marquee ---- */
+  marquee.bar {
+    display: block; background: var(--panel-2);
+    border-top: 3px solid var(--bevel-dk); border-bottom: 3px solid var(--bevel-dk);
+    padding: 10px 0; font-family: 'Comic Sans MS', cursive; font-size: 22px; font-weight: bold;
+    color: var(--accent-2);
+  }
+  marquee.bar a { color: var(--ink); text-decoration: underline; }
+
+  /* ---- layout ---- */
+  .box {
+    box-sizing: border-box; width: 760px; max-width: 96vw; margin: 36px auto 0;
+    background: var(--panel); padding: 20px 24px 28px;
+    border: 4px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
+  }
+
+  /* theme switcher */
+  .themebar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13px; }
+  .themebar .lbl { color: var(--ink-dim); }
+  .themebtn {
+    font-family: 'Comic Sans MS', cursive; font-size: 13px; cursor: pointer;
+    background: var(--btn); color: var(--btn-ink); padding: 3px 10px;
+    border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
+  }
+  .themebtn[aria-pressed="true"] {
+    border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk);
+    background: var(--accent); color: #fff;
+  }
+
+  /* under construction */
+  .uc {
+    display: flex; align-items: center; justify-content: center; gap: 16px; padding: 10px;
+    background-image: repeating-linear-gradient(45deg, var(--stripe-a) 0 14px, var(--stripe-b) 14px 28px);
+    animation: stripescroll 0.9s steps(4) infinite;
+    border: 3px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
+  }
+  .uc span {
+    background: var(--panel-2); color: var(--accent-2); font-family: 'Comic Sans MS', cursive;
+    font-weight: bold; font-size: 18px; padding: 4px 14px; letter-spacing: 2px;
+    border: 2px solid var(--accent);
+  }
+  .uc img { image-rendering: pixelated; }
+
+  /* title */
+  .hero { position: relative; text-align: center; padding: 44px 10px 12px; }
+  .hero-title {
+    font-family: 'Comic Sans MS', cursive; font-size: 58px; font-weight: bold; line-height: 1.05;
+    color: var(--accent);
+    text-shadow: 2px 2px 0 var(--bevel-dk), 4px 4px 0 rgba(61,139,255,0.25);
+    -webkit-text-stroke: 1px var(--accent-2);
+    letter-spacing: 1px;
+  }
+  .hero-sub { font-family: 'Comic Sans MS', cursive; font-size: 24px; font-weight: bold; color: var(--accent-2); margin-top: 10px; letter-spacing: 3px; }
+  .hero-tagline { font-size: 17px; color: var(--ink); margin-top: 18px; }
+  .starburst {
+    position: absolute; top: 4px; right: 8px; width: 86px; height: 86px;
+    display: flex; align-items: center; justify-content: center; text-decoration: none;
+    background: var(--accent); animation: wobble96 0.9s steps(1) infinite;
+    clip-path: polygon(50% 0%, 61% 15%, 78% 8%, 80% 26%, 98% 32%, 87% 46%, 100% 58%, 83% 65%, 86% 83%, 68% 80%, 60% 97%, 50% 82%, 40% 97%, 32% 80%, 14% 83%, 17% 65%, 0% 58%, 13% 46%, 2% 32%, 20% 26%, 22% 8%, 39% 15%);
+  }
+  .starburst span { color: #fff; font-family: 'Comic Sans MS', cursive; font-weight: bold; font-size: 16px; transform: rotate(-12deg); text-align: center; line-height: 1.1; }
+
+  /* CTA */
+  .cta-wrap { text-align: center; margin: 36px 0 8px; }
+  .cta {
+    display: inline-block; animation: pulse96 0.8s steps(1) infinite;
+    font-family: 'Comic Sans MS', cursive; font-size: 26px; font-weight: bold;
+    color: #fff; background: var(--accent); padding: 16px 36px; text-decoration: none;
+    border: 5px solid; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2);
+  }
+  .cta:active { border-color: var(--bevel-dk) var(--accent-2) var(--accent-2) var(--bevel-dk); }
+  .cta-note { font-size: 15px; color: var(--ink-dim); margin-top: 14px; }
+  .cta-note b { color: var(--accent-2); }
+
+  /* dividers */
+  .divider { height: 0; margin: 40px 12px; border-top: 2px solid var(--bevel-dk); border-bottom: 2px solid var(--bevel-lt); }
+
+  /* points counter */
+  .counter { text-align: center; padding: 26px 14px; margin: 0 12px; background: var(--panel-2);
+    border: 3px solid; border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  .counter .cap { font-family: 'Comic Sans MS', cursive; font-size: 20px; color: var(--accent-2); font-weight: bold; }
+  #points {
+    font-family: 'Courier New', monospace; font-size: 46px; font-weight: bold; color: var(--led);
+    background: var(--led-bg); display: inline-block; padding: 6px 26px; margin-top: 16px;
+    letter-spacing: 4px; text-shadow: 0 0 8px var(--led);
+    border: 2px solid; border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk);
+  }
+  .counter .fine { font-size: 14px; color: var(--ink-dim); margin-top: 14px; }
+
+  /* claim */
+  .claim-wrap { text-align: center; margin: 40px 0; }
+  #claim-btn {
+    font-family: 'Comic Sans MS', cursive; font-size: 28px; font-weight: bold;
+    color: var(--btn-ink); background: var(--btn); padding: 14px 40px; cursor: pointer;
+    border: 5px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
+  }
+  #claim-btn:active { border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  .claim-note { font-size: 15px; color: var(--ink-dim); margin-top: 14px; }
+  .claim-note b { color: var(--accent-2); }
+  .hot { animation: blink96 1s step-end infinite; color: var(--accent); font-weight: bold; }
+
+  /* section headers + tables */
+  .sec { margin: 0 12px; }
+  .sec-h {
+    font-family: 'Comic Sans MS', cursive; font-size: 26px; font-weight: bold; color: var(--accent-2);
+    text-align: center; background: var(--panel-2); padding: 8px;
+    border: 3px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
+  }
+  table.t95 { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 18px; background: var(--panel-2); }
+  table.t95 td, table.t95 th {
+    padding: 11px; border: 2px solid;
+    border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk);
+    color: var(--ink);
+  }
+  table.t95 th { background: var(--accent); color: #fff; font-family: 'Comic Sans MS', cursive; }
+  table.t95 .k { background: var(--panel); color: var(--accent-2); font-weight: bold; text-align: center; width: 96px; }
+  .accent-txt { color: var(--accent-2); font-weight: bold; }
+
+  /* faq */
+  .faq { padding: 22px 26px; margin-top: 16px; background: var(--panel-2); display: flex; flex-direction: column; gap: 20px; font-size: 18px; line-height: 1.5;
+    border: 3px solid; border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  .faq b { color: var(--accent-2); }
+  .faq .a { color: var(--ink); }
+
+  /* badges */
+  .badges { display: flex; justify-content: center; gap: 26px; flex-wrap: wrap; align-items: center; }
+  .gbook { font-family: 'Comic Sans MS', cursive; font-size: 18px; font-weight: bold; color: var(--accent); background: var(--btn); padding: 8px 18px; text-decoration: underline;
+    border: 4px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
+  .badge { font-size: 13px; padding: 8px 12px; text-align: center; line-height: 1.4; text-decoration: none;
+    border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); background: var(--panel-2); color: var(--ink); }
+  .badge.hot-badge { background: var(--accent); color: #fff; }
+  .badge b { color: var(--accent-2); }
+  .badge.hot-badge b { color: #fff; }
+
+  /* hit counter */
+  .hits { text-align: center; margin-top: 48px; }
+  .hits img { display: block; margin: 0 auto 18px; }
+  #visitor-number { font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold; color: var(--led); letter-spacing: 6px; background: var(--led-bg); padding: 2px 6px; }
+  .hits .frame { display: inline-block; background: var(--led-bg); padding: 5px 9px; margin-top: 8px;
+    border: 3px solid; border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  .hits .fine { font-size: 13px; color: var(--ink-dim); margin-top: 10px; }
+
+  /* footer */
+  .foot { text-align: center; margin-top: 48px; font-size: 11px; color: var(--ink-dim); line-height: 2; }
+  .foot img { vertical-align: middle; image-rendering: pixelated; }
+  .foot a { color: var(--ink-dim); }
+
+  /* popup */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 999; }
+  .popup { width: 380px; max-width: 92vw; background: var(--panel); font-family: 'Times New Roman', serif;
+    border: 3px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); box-shadow: 6px 6px 0 rgba(0,0,0,0.5); }
+  .popup .titlebar { background: var(--accent); color: #fff; font-weight: bold; font-size: 15px; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; }
+  .popup .titlebar button { width: 22px; height: 20px; background: var(--btn); color: var(--btn-ink); font-weight: bold; font-size: 12px; cursor: pointer; line-height: 1;
+    border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
+  .popup .pbody { display: flex; gap: 14px; align-items: center; padding: 18px 16px; color: var(--ink); font-size: 16px; }
+  .popup .icon { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; flex-shrink: 0; }
+  .popup .ok { text-align: center; padding: 0 0 14px; }
+  .popup .ok button { font-size: 15px; background: var(--btn); color: var(--btn-ink); padding: 4px 30px; cursor: pointer;
+    border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
+
+  @media (max-width: 480px) {
+    .box { padding: 14px 8px 20px; }
+    .hero { padding: 34px 6px 10px; }
+    .hero-title { font-size: 34px; }
+    .hero-sub { font-size: 17px; }
+    .hero-tagline { font-size: 14px; }
+    .starburst { width: 58px; height: 58px; top: 0; right: 2px; }
+    .starburst span { font-size: 10px; }
+    marquee.bar { font-size: 15px; }
+    .cta { font-size: 16px; padding: 12px 16px; }
+    #points { font-size: 24px; letter-spacing: 2px; padding: 4px 10px; }
+    #claim-btn { font-size: 20px; padding: 10px 22px; }
+    table.t95 { font-size: 15px; }
+    table.t95 td, table.t95 th { padding: 7px; }
+    #visitor-number { font-size: 20px; letter-spacing: 3px; }
+    .divider { margin: 30px 8px; }
+    .themebar { justify-content: center; }
+  }
 </style>
 </head>
 <body>
-<div style="min-height: 100vh; background-color: #000022; background-image: radial-gradient(1px 1px at 20px 30px, #ffffff, transparent), radial-gradient(1px 1px at 90px 110px, #ffffcc, transparent), radial-gradient(2px 2px at 160px 60px, #aaccff, transparent), radial-gradient(1px 1px at 210px 140px, #ffffff, transparent), radial-gradient(1px 1px at 60px 170px, #ffaaff, transparent), radial-gradient(2px 2px at 130px 190px, #ffffff, transparent), radial-gradient(1px 1px at 250px 90px, #ccffff, transparent); background-size: 280px 220px; font-family: 'Times New Roman', Times, serif; color: #ffffff; padding-bottom: 80px;">
 
-  <!-- RAINBOW MARQUEE -->
-  <marquee scrollamount="8" style="display: block; background: #000000; border-top: 3px ridge #808080; border-bottom: 3px ridge #808080; padding: 10px 0; font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 22px; font-weight: bold;">
-    <span style="color: #ff0000;">🚨 </span><span style="color: #00ff00;">$HELIXPOINT IS LIVE ON TRIPPY PUMP </span><span style="color: #ffff00;">🚀 </span><a href="https://pump.trippyinj.xyz/launch/8" style="color: #00ffff; text-decoration: underline;">pump.trippyinj.xyz/launch/8</a><span style="color: #ff00ff;"> 🚀 </span><span style="color: #ff7700;">AIRDROP </span><span style="color: #ffff00;">COMING </span><span style="color: #00ff00;">SOON™ </span><span style="color: #00ffff;">🚨 </span><span style="color: #ff00ff;">(Season 12 of waiting) </span><span style="color: #ff0000;">🚨 </span><span style="color: #00ff00;">BUY NOW, </span><span style="color: #ffff00;">POINT LATER </span><span style="color: #00ffff;">🚨</span>
+  <marquee class="bar" scrollamount="8">
+    <span>$HELIXPOINT IS LIVE ON TRIPPY PUMP</span> &nbsp;•&nbsp; <a href="https://pump.trippyinj.xyz/launch/8">pump.trippyinj.xyz/launch/8</a> &nbsp;•&nbsp; AIRDROP COMING SOON™ &nbsp;•&nbsp; (Season 12 of waiting) &nbsp;•&nbsp; BUY NOW, POINT LATER &nbsp;•&nbsp; $HELIXPOINT IS LIVE ON TRIPPY PUMP &nbsp;•&nbsp; AIRDROP COMING SOON™
   </marquee>
 
-  <!-- MAIN TABLE-STYLE CONTAINER -->
-  <div class="main-box" style="box-sizing: border-box; width: 760px; max-width: 96vw; margin: 36px auto 0 auto; background: #000033; border: 4px outset #8888ff; padding: 28px 24px;">
+  <div class="box">
 
-    <!-- UNDER CONSTRUCTION BANNER -->
-    <div style="display: flex; align-items: center; justify-content: center; gap: 18px; background-image: repeating-linear-gradient(45deg, #ffcc00 0 14px, #000000 14px 28px); animation: stripescroll 0.9s steps(4) infinite; border: 3px ridge #ffff00; padding: 12px;">
-      <img src="gifs/digger.gif" alt="" width="36" height="36" style="image-rendering: pixelated;">
-      <img src="gifs/uc-banner.gif" alt="UNDER CONSTRUCTION" width="420" height="24" style="image-rendering: pixelated; max-width: 60vw;">
-      <img src="gifs/digger.gif" alt="" width="36" height="36" style="image-rendering: pixelated;">
+    <!-- theme switcher -->
+    <div class="themebar">
+      <span class="lbl">Display:</span>
+      <button class="themebtn" data-theme-set="light" aria-pressed="false">☀ Light</button>
+      <button class="themebtn" data-theme-set="dark" aria-pressed="false">🌙 Dark</button>
+      <button class="themebtn" data-theme-set="system" aria-pressed="false">🖥 System</button>
     </div>
 
-    <!-- WORDART TITLE -->
-    <div style="position: relative; text-align: center; padding: 52px 10px 16px 10px;">
-      <div class="hero-title" style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 58px; font-weight: bold; line-height: 1.05; background-image: linear-gradient(90deg, #ff0000, #ff9900, #ffff00, #00ff00, #00ffff, #0066ff, #ff00ff, #ff0000); background-size: 200% 100%; animation: rainbowshift 3s steps(12) infinite; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 2px #ffffff; filter: drop-shadow(4px 4px 0 #660066); transform: perspective(300px) rotateX(14deg);">$HELIXPOINT</div>
-      <div class="hero-sub" style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 26px; font-weight: bold; color: #00ffff; text-shadow: 2px 2px 0 #ff00ff; margin-top: 10px;">— THE POINTS TOKEN —</div>
-      <!-- NEW! STARBURST -->
-      <a href="https://pump.trippyinj.xyz/launch/8" class="starburst" style="position: absolute; top: 4px; right: 14px; width: 92px; height: 92px; animation: wobble96 0.9s steps(1) infinite; display: flex; align-items: center; justify-content: center; background: #ff0000; text-decoration: none; clip-path: polygon(50% 0%, 61% 15%, 78% 8%, 80% 26%, 98% 32%, 87% 46%, 100% 58%, 83% 65%, 86% 83%, 68% 80%, 60% 97%, 50% 82%, 40% 97%, 32% 80%, 14% 83%, 17% 65%, 0% 58%, 13% 46%, 2% 32%, 20% 26%, 22% 8%, 39% 15%);">
-        <span style="color: #ffff00; font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-weight: bold; font-size: 17px; transform: rotate(-12deg); text-align: center; line-height: 1.1;">LIVE<br>NOW!</span>
-      </a>
-      <div class="hero-tagline" style="font-size: 17px; color: #ffff00; margin-top: 18px;"><span style="animation: blink96 1s step-end infinite;">★</span> The official homepage of $HELIXPOINT on Injective <span style="animation: blink96 1s step-end infinite;">★</span></div>
+    <!-- under construction -->
+    <div class="uc">
+      <img src="gifs/digger.gif" alt="" width="34" height="34">
+      <span>🚧 UNDER CONSTRUCTION 🚧</span>
+      <img src="gifs/digger.gif" alt="" width="34" height="34">
     </div>
 
-    <!-- MAIN CTA: TRIPPY PUMP -->
-    <div style="text-align: center; margin: 40px 0 8px 0;">
-      <a href="https://pump.trippyinj.xyz/launch/8" class="pump-btn" style="display: inline-block; animation: pulse96 0.8s steps(1) infinite; font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 28px; font-weight: bold; color: #ffff00; background: #aa00aa; border-top: 6px solid #ff99ff; border-left: 6px solid #ff99ff; border-bottom: 6px solid #550055; border-right: 6px solid #550055; padding: 18px 40px; text-decoration: none; text-shadow: 2px 2px 0 #000000;">🚀 $HELIXPOINT IS LIVE ON TRIPPY PUMP — GET IT HERE 🚀</a>
-      <div style="font-size: 15px; color: #00ff00; margin-top: 14px;"><span style="animation: blink96 1s step-end infinite; color: #ff0000; font-weight: bold;">►</span> the token exists TODAY. the points... see roadmap <span style="animation: blink96 1s step-end infinite; color: #ff0000; font-weight: bold;">◄</span></div>
+    <!-- title -->
+    <div class="hero">
+      <div class="hero-title">$HELIXPOINT</div>
+      <div class="hero-sub">— THE POINTS TOKEN —</div>
+      <a class="starburst" href="https://pump.trippyinj.xyz/launch/8"><span>LIVE<br>NOW!</span></a>
+      <div class="hero-tagline"><span class="hot">★</span> The official homepage of $HELIXPOINT on Injective <span class="hot">★</span></div>
     </div>
 
-    <img src="gifs/bar.gif" alt="" class="gifbar">
-
-    <!-- POINTS COUNTER -->
-    <div style="text-align: center; border: 3px inset #8888ff; background: #000000; padding: 28px 14px; margin: 0 12px;">
-      <div style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 20px; color: #00ff00; font-weight: bold;">Your points (redeemable for: nothing)</div>
-      <div id="points" style="font-family: 'Courier New', monospace; font-size: 46px; font-weight: bold; color: #00ff00; background: #001100; border: 2px inset #00aa00; display: inline-block; padding: 6px 26px; margin-top: 16px; letter-spacing: 4px; text-shadow: 0 0 8px #00ff00;">0</div>
-      <div style="font-size: 14px; color: #999999; margin-top: 14px;">* points accrue forever. redemption window: TBA (since 2024)</div>
-      <div style="font-size: 15px; margin-top: 10px;"><a href="https://pump.trippyinj.xyz/launch/8" style="color: #00ffff;">tired of waiting? the actual token trades here →</a></div>
+    <!-- CTA -->
+    <div class="cta-wrap">
+      <a class="cta" href="https://pump.trippyinj.xyz/launch/8">🚀 $HELIXPOINT IS LIVE ON TRIPPY PUMP — GET IT HERE</a>
+      <div class="cta-note"><b>►</b> the token exists TODAY. the points... see roadmap <b>◄</b></div>
     </div>
 
-    <!-- CLAIM BUTTON -->
-    <div style="text-align: center; margin: 48px 0;">
-      <button id="claim-btn" style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 30px; font-weight: bold; color: #000000; background: #c0c0c0; border-top: 5px solid #ffffff; border-left: 5px solid #ffffff; border-bottom: 5px solid #555555; border-right: 5px solid #555555; padding: 14px 44px; cursor: pointer;">💰 CLAIM AIRDROP 💰</button>
-      <div style="font-size: 15px; color: #ff9999; margin-top: 14px;"><span style="animation: blink96 1s step-end infinite; color: #ff0000; font-weight: bold;">HOT!</span> You have attempted to claim <b id="claim-attempts" style="color: #ffff00;">0</b> time(s). Success rate: 0%</div>
+    <div class="divider"></div>
+
+    <!-- points -->
+    <div class="counter">
+      <div class="cap">Your points (redeemable for: nothing)</div>
+      <div id="points">0</div>
+      <div class="fine">* points accrue forever. redemption window: TBA (since 2024)</div>
+      <div class="fine"><a href="https://pump.trippyinj.xyz/launch/8">tired of waiting? the actual token trades here →</a></div>
     </div>
 
-    <!-- ROADMAP -->
-    <div style="margin: 0 12px;">
-      <div style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 28px; font-weight: bold; color: #ff00ff; text-shadow: 2px 2px 0 #000000; text-align: center; background: #220022; border: 3px ridge #ff00ff; padding: 8px;">🗺️ OFFICIAL ROADMAP 🗺️</div>
-      <table border="2" cellpadding="12" cellspacing="2" style="width: 100%; border-collapse: separate; background: #000044; border: 3px outset #8888ff; margin-top: 16px; font-size: 18px;">
-        <tbody>
-          <tr>
-            <td style="border: 2px inset #8888ff; background: #003300; color: #00ff00; font-weight: bold; width: 90px; text-align: center;">NOW</td>
-            <td style="border: 2px inset #8888ff; color: #00ff00; font-weight: bold;">$HELIXPOINT live on <a href="https://pump.trippyinj.xyz/launch/8" style="color: #00ffff;">Trippy Pump</a> 🚀 (the one deliverable that shipped early)</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #8888ff; background: #000066; color: #ffff00; font-weight: bold; text-align: center;">Q1</td>
-            <td style="border: 2px inset #8888ff; color: #ffffff;">Delay.</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #8888ff; background: #000066; color: #ffff00; font-weight: bold; text-align: center;">Q2</td>
-            <td style="border: 2px inset #8888ff; color: #ffffff;">Delay.</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #8888ff; background: #000066; color: #ffff00; font-weight: bold; text-align: center;">Q3</td>
-            <td style="border: 2px inset #8888ff; color: #ffffff;">Announce delay of delay.</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #8888ff; background: #000066; color: #ffff00; font-weight: bold; text-align: center;">Q4</td>
-            <td style="border: 2px inset #8888ff; color: #00ff00; font-weight: bold;">Soon™ <span style="animation: blink96 1s step-end infinite;">✨</span></td>
-          </tr>
-        </tbody>
+    <!-- claim -->
+    <div class="claim-wrap">
+      <button id="claim-btn">💰 CLAIM AIRDROP</button>
+      <div class="claim-note"><span class="hot">HOT!</span> You have attempted to claim <b id="claim-attempts">0</b> time(s). Success rate: 0%</div>
+    </div>
+
+    <!-- roadmap -->
+    <div class="sec">
+      <div class="sec-h">🗺️ OFFICIAL ROADMAP 🗺️</div>
+      <table class="t95">
+        <tr><td class="k" style="background:var(--accent);color:#fff;">NOW</td><td><span class="accent-txt">$HELIXPOINT live on <a href="https://pump.trippyinj.xyz/launch/8">Trippy Pump</a> 🚀</span> (the one deliverable that shipped early)</td></tr>
+        <tr><td class="k">Q1</td><td>Delay.</td></tr>
+        <tr><td class="k">Q2</td><td>Delay.</td></tr>
+        <tr><td class="k">Q3</td><td>Announce delay of delay.</td></tr>
+        <tr><td class="k">Q4</td><td class="accent-txt">Soon™ <span class="hot">✨</span></td></tr>
       </table>
     </div>
 
-    <img src="gifs/bar.gif" alt="" class="gifbar">
+    <div class="divider"></div>
 
-    <!-- TOKENOMICS -->
-    <div style="margin: 0 12px;">
-      <div style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 28px; font-weight: bold; color: #00ff00; text-shadow: 2px 2px 0 #000000; text-align: center; background: #002200; border: 3px ridge #00ff00; padding: 8px;">💸 TOKENOMICS 💸</div>
-      <table border="3" cellpadding="12" cellspacing="3" style="width: 100%; border-collapse: separate; background: #003300; border: 4px outset #00aa00; margin-top: 16px; font-size: 18px;">
-        <tbody>
-          <tr>
-            <th style="border: 2px inset #00aa00; background: #005500; color: #ffff00; font-family: 'Comic Sans MS', 'Comic Sans', cursive;">Allocation</th>
-            <th style="border: 2px inset #00aa00; background: #005500; color: #ffff00; font-family: 'Comic Sans MS', 'Comic Sans', cursive;">Amount</th>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #00aa00; color: #ffffff;">Points</td>
-            <td style="border: 2px inset #00aa00; color: #00ff00; font-weight: bold; text-align: center;">100%</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #00aa00; color: #ffffff;">Utility</td>
-            <td style="border: 2px inset #00aa00; color: #ff4444; font-weight: bold; text-align: center;">0%</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #00aa00; color: #ffffff;">Airdrop date</td>
-            <td style="border: 2px inset #00aa00; color: #ffff00; font-weight: bold; text-align: center;">Soon™</td>
-          </tr>
-          <tr>
-            <td style="border: 2px inset #00aa00; color: #ffffff;">Where it trades</td>
-            <td style="border: 2px inset #00aa00; font-weight: bold; text-align: center;"><a href="https://pump.trippyinj.xyz/launch/8" style="color: #00ffff;">Trippy Pump 🚀</a></td>
-          </tr>
-        </tbody>
+    <!-- tokenomics -->
+    <div class="sec">
+      <div class="sec-h">💸 TOKENOMICS 💸</div>
+      <table class="t95">
+        <tr><th>Allocation</th><th>Amount</th></tr>
+        <tr><td>Points</td><td class="accent-txt" style="text-align:center;">100%</td></tr>
+        <tr><td>Utility</td><td style="text-align:center;color:var(--ink-dim);font-weight:bold;">0%</td></tr>
+        <tr><td>Airdrop date</td><td class="accent-txt" style="text-align:center;">Soon™</td></tr>
+        <tr><td>Where it trades</td><td style="text-align:center;"><a href="https://pump.trippyinj.xyz/launch/8">Trippy Pump 🚀</a></td></tr>
       </table>
     </div>
 
-    <img src="gifs/bar.gif" alt="" class="gifbar">
+    <div class="divider"></div>
 
-    <!-- FAQ -->
-    <div style="margin: 0 12px;">
-      <div style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 28px; font-weight: bold; color: #00ffff; text-shadow: 2px 2px 0 #000000; text-align: center; background: #002222; border: 3px ridge #00ffff; padding: 8px;">❓ FREQUENTLY ASKED QUESTIONS ❓</div>
-      <div style="border: 3px inset #8888ff; background: #000022; padding: 24px 28px; margin-top: 16px; font-size: 18px; display: flex; flex-direction: column; gap: 22px; line-height: 1.5;">
-        <div><b style="color: #ffff00;">Q: Wen buy?</b><br><span style="color: #00ff00;">A: Now. <a href="https://pump.trippyinj.xyz/launch/8" style="color: #00ffff;">On Trippy Pump.</a> This is the only question with a real answer.</span></div>
-        <div><b style="color: #ffff00;">Q: Wen airdrop?</b><br><span style="color: #00ff00;">A: Soon.</span></div>
-        <div><b style="color: #ffff00;">Q: Wat do points do?</b><br><span style="color: #00ff00;">A: They accumulate.</span></div>
-        <div><b style="color: #ffff00;">Q: Is this financial advice?</b><br><span style="color: #00ff00;">A: It is not even advice.</span></div>
-        <div><b style="color: #ffff00;">Q: How do I redeem my points?</b><br><span style="color: #00ff00;">A: Great question! Check back next epoch.</span></div>
+    <!-- faq -->
+    <div class="sec">
+      <div class="sec-h">❓ FREQUENTLY ASKED QUESTIONS ❓</div>
+      <div class="faq">
+        <div><b>Q: Wen buy?</b><br><span class="a">A: Now. <a href="https://pump.trippyinj.xyz/launch/8">On Trippy Pump.</a> This is the only question with a real answer.</span></div>
+        <div><b>Q: Wen airdrop?</b><br><span class="a">A: Soon.</span></div>
+        <div><b>Q: Wat do points do?</b><br><span class="a">A: They accumulate.</span></div>
+        <div><b>Q: Is this financial advice?</b><br><span class="a">A: It is not even advice.</span></div>
+        <div><b>Q: How do I redeem my points?</b><br><span class="a">A: Great question! Check back next epoch.</span></div>
       </div>
     </div>
 
-    <img src="gifs/bar.gif" alt="" class="gifbar">
+    <div class="divider"></div>
 
-    <!-- GUESTBOOK + BADGES -->
-    <div style="display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; align-items: center;">
-      <a href="#guestbook" id="guestbook-link" style="font-family: 'Comic Sans MS', 'Comic Sans', cursive; font-size: 18px; font-weight: bold; color: #0000ee; background: #c0c0c0; border-top: 4px solid #ffffff; border-left: 4px solid #ffffff; border-bottom: 4px solid #555555; border-right: 4px solid #555555; padding: 8px 18px; text-decoration: underline;">📖 Sign My Guestbook!!</a>
-      <a href="https://pump.trippyinj.xyz/launch/8" style="border: 2px outset #c0c0c0; background: #220022; color: #ffff00; font-size: 13px; padding: 8px 12px; text-align: center; line-height: 1.4; text-decoration: none;"><span style="animation: blink96 1s step-end infinite; color: #ff0000;">●</span> LIVE ON<br><b style="color: #00ffff;">TRIPPY PUMP</b><br>click 2 trade 🚀</a>
-      <div style="border: 2px outset #c0c0c0; background: #000080; color: #ffffff; font-size: 13px; padding: 8px 12px; text-align: center; line-height: 1.4;">Best viewed in<br><b>Netscape Navigator 3.0</b><br>at 800x600</div>
-      <div style="border: 2px outset #c0c0c0; background: #c0c0c0; color: #000000; font-size: 13px; padding: 8px 12px; text-align: center; line-height: 1.4;">Made with<br><b>Notepad.exe</b><br>and love ❤️</div>
+    <!-- badges -->
+    <div class="badges">
+      <a href="#guestbook" id="guestbook-link" class="gbook">📖 Sign My Guestbook!!</a>
+      <a href="https://pump.trippyinj.xyz/launch/8" class="badge hot-badge"><span class="hot" style="color:#fff;">●</span> LIVE ON<br><b>TRIPPY PUMP</b><br>click 2 trade 🚀</a>
+      <div class="badge">Best viewed in<br><b>Netscape Navigator 3.0</b><br>at 800x600</div>
+      <div class="badge">Made with<br><b>Notepad.exe</b><br>and love 🩵</div>
     </div>
 
-    <!-- HIT COUNTER + GLOBE -->
-    <div style="text-align: center; margin-top: 52px;">
-      <img src="gifs/globe.gif" alt="" width="72" height="72" style="display: block; margin: 0 auto 18px auto;">
-      <div style="font-size: 16px; color: #ffffff;">You are visitor #</div>
-      <div style="display: inline-block; background: #000000; border: 3px inset #808080; padding: 5px 9px; margin-top: 8px;">
-        <span id="visitor-number" style="font-family: 'Courier New', monospace; font-size: 28px; font-weight: bold; color: #00ff00; letter-spacing: 6px; background: #001100; padding: 2px 6px; border: 1px solid #004400;">000004</span>
-      </div>
-      <div style="font-size: 13px; color: #888888; margin-top: 10px;">(counter provided by FreeHitCounterz.geo — since 1996)</div>
+    <!-- hit counter -->
+    <div class="hits">
+      <img src="gifs/globe.gif" alt="" width="72" height="72">
+      <div style="font-size:16px;color:var(--ink);">You are visitor #</div>
+      <div class="frame"><span id="visitor-number">000004</span></div>
+      <div class="fine">(counter provided by FreeHitCounterz.geo — since 1996)</div>
     </div>
 
-    <!-- FOOTER -->
-    <div style="text-align: center; margin-top: 52px; font-size: 11px; color: #777777; line-height: 2;">
-      <img src="gifs/digger.gif" alt="" width="24" height="24" style="vertical-align: middle; image-rendering: pixelated;">
-      <span style="animation: blink96 1s step-end infinite; color: #aaaaaa;">Page under construction forever</span>
-      <img src="gifs/digger.gif" alt="" width="24" height="24" style="vertical-align: middle; image-rendering: pixelated;"><br>
-      © 1997 $HELIXPOINT WebRing™ · Last updated: 03/14/1997 · <a href="https://pump.trippyinj.xyz/launch/8" style="color: #888888;">$HELIXPOINT on Trippy Pump</a>
+    <!-- footer -->
+    <div class="foot">
+      <img src="gifs/digger.gif" alt="" width="22" height="22">
+      <span class="hot" style="color:var(--ink-dim);">Page under construction forever</span>
+      <img src="gifs/digger.gif" alt="" width="22" height="22"><br>
+      © 1997 $HELIXPOINT WebRing™ · Last updated: 03/14/1997 · <a href="https://pump.trippyinj.xyz/launch/8">$HELIXPOINT on Trippy Pump</a>
     </div>
   </div>
 
-  <!-- FAKE 90s POPUP DIALOG -->
-  <div id="popup-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: none; align-items: center; justify-content: center; z-index: 999;">
-    <div class="popup-box" style="width: 380px; background: #c0c0c0; border-top: 3px solid #ffffff; border-left: 3px solid #ffffff; border-bottom: 3px solid #404040; border-right: 3px solid #404040; box-shadow: 6px 6px 0 rgba(0,0,0,0.5); font-family: 'Times New Roman', Times, serif;">
-      <div style="background: linear-gradient(90deg, #000080, #1084d0); color: #ffffff; font-weight: bold; font-size: 15px; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center;">
-        <span>Message from webpage</span>
-        <button class="popup-close" style="width: 22px; height: 20px; background: #c0c0c0; border-top: 2px solid #ffffff; border-left: 2px solid #ffffff; border-bottom: 2px solid #404040; border-right: 2px solid #404040; font-weight: bold; font-size: 12px; cursor: pointer; line-height: 1;">✕</button>
-      </div>
-      <div style="display: flex; gap: 14px; align-items: center; padding: 18px 16px; color: #000000; font-size: 16px;">
-        <div style="width: 40px; height: 40px; border-radius: 50%; background: #ffff00; border: 2px solid #808080; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; color: #000000; flex-shrink: 0;">!</div>
-        <div id="popup-message"></div>
-      </div>
-      <div style="text-align: center; padding: 0 0 14px 0;">
-        <button class="popup-close" style="font-size: 15px; background: #c0c0c0; border-top: 2px solid #ffffff; border-left: 2px solid #ffffff; border-bottom: 2px solid #404040; border-right: 2px solid #404040; padding: 4px 30px; cursor: pointer; outline: 1px dotted #000000; outline-offset: -5px;">OK</button>
-      </div>
+  <!-- popup -->
+  <div class="overlay" id="popup-overlay">
+    <div class="popup">
+      <div class="titlebar"><span>Message from webpage</span><button class="popup-close">✕</button></div>
+      <div class="pbody"><div class="icon">!</div><div id="popup-message"></div></div>
+      <div class="ok"><button class="popup-close">OK</button></div>
     </div>
   </div>
-</div>
 
 <script>
 (function () {
-  var VISITOR_NUMBER = 4;
-  var POINTS_PER_SECOND = 137;
-  var PUMP_URL = 'https://pump.trippyinj.xyz/launch/8';
-
-  var points = 0;
-  var claimAttempts = 0;
-
+  var VISITOR_NUMBER = 4, POINTS_PER_SECOND = 137, PUMP_URL = 'https://pump.trippyinj.xyz/launch/8';
+  var points = 0, claimAttempts = 0;
   var pointsEl = document.getElementById('points');
   var claimAttemptsEl = document.getElementById('claim-attempts');
-  var visitorEl = document.getElementById('visitor-number');
   var overlayEl = document.getElementById('popup-overlay');
   var popupMessageEl = document.getElementById('popup-message');
-
-  visitorEl.textContent = String(VISITOR_NUMBER).padStart(6, '0');
+  document.getElementById('visitor-number').textContent = String(VISITOR_NUMBER).padStart(6, '0');
 
   setInterval(function () {
     points += Math.floor(POINTS_PER_SECOND / 10) + Math.floor(Math.random() * 7);
     pointsEl.textContent = points.toLocaleString('en-US');
   }, 100);
 
-  function showPopup(messageHtml) {
-    popupMessageEl.innerHTML = messageHtml;
-    overlayEl.style.display = 'flex';
-  }
-
+  function showPopup(html) { popupMessageEl.innerHTML = html; overlayEl.style.display = 'flex'; }
   document.getElementById('claim-btn').addEventListener('click', function () {
-    claimAttempts += 1;
-    claimAttemptsEl.textContent = claimAttempts;
+    claimAttempts += 1; claimAttemptsEl.textContent = claimAttempts;
     showPopup('Claim delayed. Please check back next epoch.<br><br>In the meantime, $HELIXPOINT is live on <a href="' + PUMP_URL + '">Trippy Pump</a> — no claiming required.');
   });
-
   document.getElementById('guestbook-link').addEventListener('click', function (e) {
     e.preventDefault();
     showPopup('Guestbook is down for maintenance (since 1998). Try again soon™.<br><br>The <a href="' + PUMP_URL + '">Trippy Pump launch page</a> is up, though.');
   });
+  Array.prototype.forEach.call(document.querySelectorAll('.popup-close'), function (b) {
+    b.addEventListener('click', function () { overlayEl.style.display = 'none'; });
+  });
 
-  Array.prototype.forEach.call(document.querySelectorAll('.popup-close'), function (btn) {
+  /* ---- theme switching ---- */
+  var mq = window.matchMedia('(prefers-color-scheme: light)');
+  function effective(pref) { return pref === 'system' ? (mq.matches ? 'light' : 'dark') : pref; }
+  function apply(pref) {
+    document.documentElement.setAttribute('data-theme', effective(pref));
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function (btn) {
+      btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-set') === pref ? 'true' : 'false');
+    });
+  }
+  var pref = 'system';
+  try { pref = localStorage.getItem('hp-theme') || 'system'; } catch (e) {}
+  apply(pref);
+  Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function (btn) {
     btn.addEventListener('click', function () {
-      overlayEl.style.display = 'none';
+      pref = btn.getAttribute('data-theme-set');
+      try { localStorage.setItem('hp-theme', pref); } catch (e) {}
+      apply(pref);
     });
   });
+  mq.addEventListener('change', function () { if (pref === 'system') apply('system'); });
 })();
 </script>
 </body>

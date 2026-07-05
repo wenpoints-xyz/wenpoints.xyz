@@ -24,3 +24,26 @@
 {"ts":"2026-07-05T07:42:50.154Z","cmd":"viewport","args":"375x812","origin":"file:///root/helixpoints/repo/site/index.html","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
 {"ts":"2026-07-05T07:42:50.193Z","cmd":"goto","args":"file:///root/helixpoints/repo/site/index.html","origin":"file:///root/helixpoints/repo/site/index.html","durationMs":8,"status":"ok","hasCookies":false,"mode":"launched"}
 {"ts":"2026-07-05T07:42:50.311Z","cmd":"screenshot","args":"/tmp/claude-0/-root-helixpoints/2cd0c12d-edee-47b4-a18b-2318964a469e/scratchpad/mobile.png","origin":"file:///root/helixpoints/repo/site/index.html","durationMs":90,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T07:59:10.076Z","cmd":"viewport","args":"375x812","origin":"file:///root/helixpoints/repo/site/index.html","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T07:59:10.310Z","cmd":"goto","args":"https://wenpoints.xyz/","origin":"https://wenpoints.xyz/","durationMs":198,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T07:59:10.339Z","cmd":"js","args":"'mobile check: ' + document.documentElement.scrollWidth + ' vs ' + document.documentElement.clientWidth","origin":"https://wenpoints.xyz/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T07:59:22.488Z","cmd":"viewport","args":"375x812","origin":"https://wenpoints.xyz/","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T07:59:22.533Z","cmd":"goto","args":"https://wenpoints.xyz/","origin":"https://wenpoints.xyz/","durationMs":7,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T07:59:22.577Z","cmd":"js","args":"document.documentElement.scrollWidth + ' vs ' + document.documentElement.clientWidth + ' | starburst anim: ' + getComputedStyle(document.querySelector('.starburst')).animationTimingFunction","origin":"https://wenpoints.xyz/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:37.122Z","cmd":"viewport","args":"1280x900","origin":"https://wenpoints.xyz/","durationMs":5,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:37.801Z","cmd":"goto","args":"https://www.getxapi.com/","origin":"https://www.getxapi.com/","durationMs":650,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:37.874Z","cmd":"text","args":"","origin":"https://www.getxapi.com/","durationMs":6,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:50.520Z","cmd":"goto","args":"https://www.getxapi.com/docs","origin":"https://www.getxapi.com/docs","durationMs":65,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:50.566Z","cmd":"text","args":"","origin":"https://www.getxapi.com/docs","durationMs":11,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:59.817Z","cmd":"goto","args":"https://www.getxapi.com/","origin":"https://www.getxapi.com/","durationMs":73,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:10:59.883Z","cmd":"links","args":"","origin":"https://www.getxapi.com/","durationMs":5,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:10.098Z","cmd":"goto","args":"https://docs.getxapi.com/","origin":"https://docs.getxapi.com/","durationMs":131,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:10.131Z","cmd":"text","args":"","origin":"https://docs.getxapi.com/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:18.756Z","cmd":"links","args":"","origin":"https://docs.getxapi.com/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:29.727Z","cmd":"links","args":"","origin":"https://docs.getxapi.com/","durationMs":3,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:36.730Z","cmd":"goto","args":"https://docs.getxapi.com/docs","origin":"https://docs.getxapi.com/docs","durationMs":324,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:36.775Z","cmd":"text","args":"","origin":"https://docs.getxapi.com/docs","durationMs":6,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:53.082Z","cmd":"goto","args":"https://docs.getxapi.com/docs/users/user-login","origin":"https://docs.getxapi.com/docs/users/user-login","durationMs":314,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:11:53.138Z","cmd":"text","args":"","origin":"https://docs.getxapi.com/docs/users/user-login","durationMs":6,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:15:15.459Z","cmd":"goto","args":"https://docs.getxapi.com/docs/tweets/create-tweet","origin":"https://docs.getxapi.com/docs/tweets/create-tweet","durationMs":307,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-05T08:15:15.515Z","cmd":"text","args":"","origin":"https://docs.getxapi.com/docs/tweets/create-tweet","durationMs":10,"status":"ok","hasCookies":false,"mode":"launched"}
