@@ -480,9 +480,14 @@
     render();
   }, 100);
 
+  var turboClicks = 0;
   document.getElementById('turbo-btn').addEventListener('click', function () {
     points += 2000 + Math.floor(Math.random() * 6000); /* +2,000–7,999 instantly */
     render();
+    turboClicks += 1;
+    if (turboClicks % 3 === 0) {
+      showPopup('⚡ Turbo points feel good. You know what feels the same but is actually real? Buying $HELIXPOINT directly on <a href="' + PUMP_URL + '">Trippy Pump</a>.');
+    }
   });
 
   function showPopup(html) { popupMessageEl.innerHTML = html; overlayEl.style.display = 'flex'; }
