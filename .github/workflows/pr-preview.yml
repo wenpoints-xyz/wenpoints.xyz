@@ -5,8 +5,8 @@ on:
     types: [opened, reopened, synchronize, closed]
 
 concurrency:
-  group: preview-${{ github.event.number }}
-  cancel-in-progress: true
+  group: gh-pages-writes
+  cancel-in-progress: false
 
 permissions:
   contents: write
