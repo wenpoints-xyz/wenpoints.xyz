@@ -135,6 +135,21 @@
   .gb-bar:active { border-color: var(--bevel-dk) var(--accent-2) var(--accent-2) var(--bevel-dk); }
   @media (max-width: 480px) { .gb-bar { font-size: 15px; } }
 
+  /* guestbook preview — filled in after first paint, hidden until then, zero deps */
+  .gb-peek { box-sizing: border-box; width: 760px; max-width: 96vw; margin: 8px auto 0;
+    background: var(--panel-2); color: var(--ink); font-family: var(--comic); font-size: 14px;
+    border: 3px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
+    padding: 8px 12px 10px; }
+  .gb-peek-h { color: var(--accent-2); font-weight: bold; font-size: 13px; letter-spacing: .5px;
+    margin-bottom: 6px; text-transform: uppercase; }
+  .gb-peek-list { list-style: none; margin: 0; padding: 0; }
+  .gb-peek-list li { padding: 4px 0; border-top: 1px dotted var(--bevel-lt); line-height: 1.35; }
+  .gb-peek-list li:first-child { border-top: 0; }
+  .gb-peek-addr { color: var(--accent-2); font-family: monospace; font-size: 12px; margin-right: 7px; }
+  .gb-peek-msg { color: var(--ink); word-break: break-word; }
+  .gb-peek-more { display: inline-block; margin-top: 7px; font-size: 12px; color: var(--accent-2); }
+  @media (max-width: 480px) { .gb-peek { font-size: 13px; } }
+
   /* ---- marquee ---- */
   marquee.bar {
     display: block; background: var(--panel-2);
@@ -344,6 +359,13 @@
 
   <a class="gb-bar" href="/guestbook/">📖 SIGN THE $HELIXPOINT GUESTBOOK — NOW ON-CHAIN →</a>
 
+  <!-- guestbook preview: filled in after the page paints; stays hidden until it has data, fails silent -->
+  <div class="gb-peek" id="gb-peek" hidden>
+    <div class="gb-peek-h">📖 Fresh from the guestbook</div>
+    <ul class="gb-peek-list" id="gb-peek-list"></ul>
+    <a class="gb-peek-more" href="/guestbook/">read all + sign it →</a>
+  </div>
+
   <div class="box">
 
     <!-- theme switcher -->
@@ -529,6 +551,90 @@
     });
   });
   mq.addEventListener('change', function () { if (pref === 'system') apply('system'); });
+})();
+</script>
+
+<script>
+/* Guestbook homepage teaser — deferred, zero-dependency, non-blocking, fails silent.
+   Runs on requestIdleCallback (after first paint), scans the last few block windows
+   for the 3 most-recent non-deleted PostCreated events, renders them XSS-safe. */
+(function () {
+  var RPC = "https://sentry.evm-rpc.injective.network/",
+      CONTRACT = "0xc71D862cD4E6b35F6aA29Fd908c27d1c4b2406EA",
+      T_POST = "0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac",
+      T_DEL  = "0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3",
+      DEPLOY = 172959998, WINDOW = 9000, MAX_WIN = 12, NEED = 3;
+  var _id = 0;
+  function rpc(method, params) {
+    return fetch(RPC, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++_id, method: method, params: params || [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j.error) throw new Error(j.error.message || "rpc"); return j.result; });
+  }
+  function getLogs(from, to) {
+    return rpc("eth_getLogs", [{ address: CONTRACT, topics: [[T_POST, T_DEL]],
+      fromBlock: "0x" + from.toString(16), toBlock: "0x" + to.toString(16) }]);
+  }
+  function hexToUtf8(h) {
+    h = h.replace(/^0x/, ""); var b = new Uint8Array(h.length / 2);
+    for (var i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16);
+    return new TextDecoder().decode(b);
+  }
+  function decodeMsg(data) {
+    var d = data.replace(/^0x/, "");
+    var len = parseInt(d.slice(64, 128), 16) || 0;
+    return hexToUtf8(d.slice(128, 128 + len * 2));
+  }
+  function shortAddr(topic) {
+    var a = "0x" + topic.replace(/^0x/, "").slice(-40);
+    return a.slice(0, 6) + "…" + a.slice(-4);
+  }
+  function bn(x) { return parseInt(x, 16); }
+  function run() {
+    return rpc("eth_blockNumber", []).then(function (h) {
+      var to = bn(h), deleted = {}, out = [], win = 0;
+      function step() {
+        if (to < DEPLOY || out.length >= NEED || win >= MAX_WIN) return Promise.resolve(out.slice(0, NEED));
+        var from = Math.max(DEPLOY, to - WINDOW + 1);
+        return getLogs(from, to).then(function (logs) {
+          logs.sort(function (a, b) {           // newest first
+            var d = bn(b.blockNumber) - bn(a.blockNumber);
+            return d !== 0 ? d : bn(b.logIndex || "0x0") - bn(a.logIndex || "0x0");
+          });
+          for (var i = 0; i < logs.length && out.length < NEED; i++) {
+            var lg = logs[i], t0 = (lg.topics[0] || "").toLowerCase();
+            if (t0 === T_DEL) { deleted[(lg.topics[1] || "").toLowerCase()] = 1; continue; }
+            if (t0 === T_POST) {
+              var key = (lg.topics[2] || "").toLowerCase();   // post index topic
+              if (deleted[key]) continue;                     // scanning newest-first: delete seen before its create
+              out.push({ addr: shortAddr(lg.topics[1]), msg: decodeMsg(lg.data) });
+            }
+          }
+          to = from - 1; win++;
+          return step();
+        });
+      }
+      return step();
+    });
+  }
+  function render(posts) {
+    if (!posts || !posts.length) return;
+    var box = document.getElementById("gb-peek"), list = document.getElementById("gb-peek-list");
+    if (!box || !list) return;
+    posts.forEach(function (p) {
+      var li = document.createElement("li");
+      var a = document.createElement("span"); a.className = "gb-peek-addr"; a.textContent = p.addr;
+      var m = document.createElement("span"); m.className = "gb-peek-msg";
+      var txt = (p.msg || "").replace(/\s+/g, " ").trim();
+      if (txt.length > 120) txt = txt.slice(0, 120) + "…";
+      m.textContent = txt || "(gm)";
+      li.appendChild(a); li.appendChild(m); list.appendChild(li);   // textContent => XSS-safe
+    });
+    box.hidden = false;
+  }
+  function boot() { run().then(render).catch(function () { /* stay hidden */ }); }
+  if (window.requestIdleCallback) requestIdleCallback(boot, { timeout: 3000 });
+  else window.addEventListener("load", function () { setTimeout(boot, 500); });
 })();
 </script>
 </body>
