@@ -221,3 +221,6 @@
 [2026-07-05T10:16:20.951Z] GET file:///root/helixpoints/repo/site/index.html → 200 (1ms, 26433B)
 [2026-07-05T10:16:20.956Z] GET file:///root/helixpoints/repo/site/gifs/digger.gif → 200 (?ms, 7407B)
 [2026-07-05T10:16:20.956Z] GET file:///root/helixpoints/repo/site/gifs/globe.gif → 200 (?ms, 155642B)
+[2026-07-05T10:19:29.085Z] GET https://wenpoints.xyz/ → 200 (165ms, 26433B)
+[2026-07-05T10:19:29.268Z] GET https://wenpoints.xyz/gifs/digger.gif → pending (?ms, ?B)
+[2026-07-05T10:19:29.268Z] GET https://wenpoints.xyz/gifs/globe.gif → pending (?ms, ?B)
