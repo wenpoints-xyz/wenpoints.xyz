@@ -289,8 +289,15 @@
   var KNOWN = [
     { rdns: "io.metamask", name: "MetaMask", url: "https://metamask.io/" },
     { rdns: "io.rabby", name: "Rabby", url: "https://rabby.io/" },
-    { rdns: "app.keplr", name: "Keplr", url: "https://www.keplr.app/" }
+    { rdns: "app.keplr", name: "Keplr", url: "https://www.keplr.app/" },
+    { rdns: "com.brave.wallet", name: "Brave Wallet", url: "https://brave.com/wallet/" }
   ];
+  function injectedLabel(p) {
+    if (p.isBraveWallet) return "Brave Wallet";
+    if (p.isRabby) return "Rabby";
+    if (p.isMetaMask) return "MetaMask";
+    return "Injected wallet";
+  }
   window.addEventListener("eip6963:announceProvider", function (e) {
     var d = e.detail; if (d && d.info && d.provider) { providers[d.info.rdns] = d; if (walletOpen) renderWalletList(); }
   });
@@ -309,16 +316,24 @@
       b.addEventListener("click", function () { connect(d.provider); });
       wlist.appendChild(b);
     });
-    // legacy fallback: window.ethereum with no 6963 announcement
-    if (found.length === 0 && window.ethereum) {
-      var lb = document.createElement("button"); lb.className = "wopt";
-      var s = document.createElement("span"); s.textContent = "Injected wallet"; lb.appendChild(s);
-      lb.addEventListener("click", function () { connect(window.ethereum); });
-      wlist.appendChild(lb);
-    }
+    // injected providers (Brave, or any wallet that doesn't announce via EIP-6963).
+    // Always list them, deduped against the announced providers by object identity.
+    var seen = found.map(function (d) { return d.provider; });
+    var have = {}; found.forEach(function (d) { have[d.info.rdns] = 1; });
+    var injected = [];
+    if (window.ethereum) injected = Array.isArray(window.ethereum.providers) ? window.ethereum.providers.slice() : [window.ethereum];
+    injected.forEach(function (p) {
+      if (!p || seen.indexOf(p) !== -1) return;
+      seen.push(p);
+      if (p.isBraveWallet) have["com.brave.wallet"] = 1; if (p.isMetaMask) have["io.metamask"] = 1; if (p.isRabby) have["io.rabby"] = 1;
+      var b = document.createElement("button"); b.className = "wopt";
+      var s = document.createElement("span"); s.textContent = injectedLabel(p); b.appendChild(s);
+      b.addEventListener("click", function () { connect(p); });
+      wlist.appendChild(b);
+    });
     // known-but-not-detected → install links
     KNOWN.forEach(function (k) {
-      if (providers[k.rdns]) return;
+      if (providers[k.rdns] || have[k.rdns]) return;
       var b = document.createElement("button"); b.className = "wopt"; b.disabled = true;
       var dot = document.createElement("span"); dot.className = "dot"; dot.textContent = "○"; b.appendChild(dot);
       var wrap = document.createElement("span");
@@ -349,10 +364,10 @@
       var accts = await provider.request({ method: "eth_requestAccounts" });
       if (!accts || !accts.length || !isAddr(accts[0])) { toast("No account returned."); return; }
       account = accts[0]; activeProvider = provider;
-      closeWallet(); updateConnectedUI(); ensureChain();
+      closeWallet(); updateConnectedUI(); ensureInjective();
       if (provider.on) {
         provider.on("accountsChanged", function (a) { account = (a && a[0]) || null; updateConnectedUI(); });
-        provider.on("chainChanged", function () { ensureChain(); });
+        provider.on("chainChanged", function () { refreshChainBanner(); });
       }
     } catch (err) {
       toast(err && err.code === 4001 ? "Connection cancelled." : "Could not connect wallet.");
@@ -364,30 +379,38 @@
     else { accEl.hidden = true; disc.hidden = true; conn.hidden = false; $("netbanner").style.display = "none"; }
     updateGating();
   }
-  async function ensureChain() {
+  function errCode(err) { return err && (err.code || (err.data && err.data.originalError && err.data.originalError.code)); }
+  async function refreshChainBanner() {
     if (!activeProvider) return;
-    try {
-      var cid = await activeProvider.request({ method: "eth_chainId" });
-      $("netbanner").style.display = (cid === INJ_HEX) ? "none" : "block";
-    } catch (e) {}
+    try { var cid = await activeProvider.request({ method: "eth_chainId" }); $("netbanner").style.display = (cid === INJ_HEX) ? "none" : "block"; } catch (e) {}
   }
-  $("switch-btn").addEventListener("click", async function () {
+  async function switchToInjective() {
     if (!activeProvider) return;
     try {
       await activeProvider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: INJ_HEX }] });
       $("netbanner").style.display = "none";
     } catch (err) {
-      if (err && err.code === 4902) {
+      if (errCode(err) === 4902) { // chain unknown to the wallet — add it (adds + switches)
         try { await activeProvider.request({ method: "wallet_addEthereumChain", params: [INJ_PARAMS] }); $("netbanner").style.display = "none"; }
-        catch (e) { toast("Could not add the Injective network."); }
-      } else { toast("Network switch cancelled."); }
+        catch (e) { toast("Could not add the Injective network."); refreshChainBanner(); }
+      } else if (errCode(err) === 4001) { toast("Staying on the current network — switch to Injective to sign."); refreshChainBanner(); }
+      else { refreshChainBanner(); }
     }
-  });
+  }
+  // Proactively recommend Injective the moment a wallet connects (fixes wallets that default to Ethereum).
+  async function ensureInjective() {
+    if (!activeProvider) return;
+    try { var cid = await activeProvider.request({ method: "eth_chainId" }); if (cid === INJ_HEX) { $("netbanner").style.display = "none"; return; } } catch (e) { return; }
+    await switchToInjective();
+  }
+  $("switch-btn").addEventListener("click", switchToInjective);
   $("disconnect-btn").addEventListener("click", function () { account = null; activeProvider = null; updateConnectedUI(); });
 
   /* ---------- wallet picker open/close + focus trap ---------- */
   function openWallet() {
-    lastFocus = document.activeElement; walletOpen = true; renderWalletList();
+    lastFocus = document.activeElement; walletOpen = true;
+    window.dispatchEvent(new Event("eip6963:requestProvider")); // re-poll for late-announcing wallets
+    renderWalletList();
     walletOverlay.style.display = "flex";
     var f = walletOverlay.querySelectorAll("button, a[href]");
     if (f.length) f[0].focus();

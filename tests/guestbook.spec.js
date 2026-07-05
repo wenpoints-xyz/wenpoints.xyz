@@ -74,3 +74,40 @@ test('empty guestbook shows the empty state', async ({ page }) => {
   await page.evaluate(() => window.__gb.clear());
   await expect(page.locator('#empty')).toBeVisible();
 });
+
+// A Brave-style wallet: injected via window.ethereum, does NOT announce via EIP-6963, defaults to Ethereum.
+const INJECTED = `
+(() => {
+  window.__calls = [];
+  window.ethereum = {
+    isBraveWallet: true,
+    request: async ({ method }) => {
+      window.__calls.push(method);
+      if (method === 'eth_requestAccounts') return ['0xAbC0000000000000000000000000000000001234'];
+      if (method === 'eth_chainId') return '0x1';           // wallet defaults to Ethereum
+      if (method === 'wallet_switchEthereumChain') return null;
+      return null;
+    },
+    on() {}
+  };
+})();
+`;
+
+test('a Brave-style injected wallet (no EIP-6963) appears and connects', async ({ page }) => {
+  await page.addInitScript(INJECTED);
+  await page.goto('/guestbook/?e2e=1');
+  await page.click('#connect-btn');
+  await expect(page.locator('#wlist .wopt').first()).toContainText('Brave Wallet');
+  await page.locator('#wlist .wopt').first().click();
+  await expect(page.locator('#account')).toBeVisible();
+});
+
+test('connecting on the wrong chain proactively switches to Injective', async ({ page }) => {
+  await page.addInitScript(INJECTED);
+  await page.goto('/guestbook/?e2e=1');
+  await page.click('#connect-btn');
+  await page.locator('#wlist .wopt').first().click();
+  await expect(page.locator('#account')).toBeVisible();
+  const calls = await page.evaluate(() => window.__calls);
+  expect(calls).toContain('wallet_switchEthereumChain');
+});
