@@ -1,10 +1,14 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
 
 const RPC = '**k8s.testnet.json-rpc.injective.network**';
 const TOPIC = '0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac';        // PostCreated
 const TOPIC_DEL = '0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3';   // PostDeleted
-const BASE = 132601081;          // must be >= chain.js CONFIG.DEPLOY_BLOCK
-const LATEST = BASE + 2000;
+// Read DEPLOY_BLOCK from chain.js so the mocked block range always covers it (survives redeploys).
+const CHAIN_SRC = fs.readFileSync(path.join(__dirname, '..', 'site', 'guestbook', 'chain.js'), 'utf8');
+const BASE = parseInt(CHAIN_SRC.match(/DEPLOY_BLOCK:\s*(\d+)/)[1], 10);
+const LATEST = BASE + 2000;      // small range -> one getLogs chunk
 
 // Build a PostCreated log the way the contract emits it, so chain.js decodes it for real.
 function makeLog(from, index, message, block) {
