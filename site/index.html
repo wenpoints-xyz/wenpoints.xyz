@@ -13,10 +13,11 @@
 <meta name="theme-color" content="#3d8bff">
 <link rel="canonical" href="https://wenpoints.xyz/">
 
-<!-- favicon -->
-<link rel="icon" type="image/png" href="/icon.png">
+<!-- favicon (small, fetched every load) -->
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon.png">
+<link rel="shortcut icon" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/icon.png">
-<link rel="shortcut icon" href="/icon.png">
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
@@ -78,6 +79,8 @@
     --btn-ink:  #dce8fa;
     --stripe-a: #14385f;
     --stripe-b: #05101d;
+    /* desktop: real Comic Sans where present, else the OS cursive (looks good on Ubuntu/Win/Mac) */
+    --comic: 'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', 'Comic Neue', cursive;
   }
   [data-theme="light"] {
     --bg:       #c6d5ea;
@@ -122,13 +125,13 @@
   }
   a { color: var(--accent-2); }
 
-  .comic { font-family: 'Comic Sans MS', 'Comic Sans', cursive; }
+  .comic { font-family: var(--comic); }
 
   /* ---- marquee ---- */
   marquee.bar {
     display: block; background: var(--panel-2);
     border-top: 3px solid var(--bevel-dk); border-bottom: 3px solid var(--bevel-dk);
-    padding: 10px 0; font-family: 'Comic Sans MS', cursive; font-size: 22px; font-weight: bold;
+    padding: 10px 0; font-family: var(--comic); font-size: 22px; font-weight: bold;
     color: var(--accent-2);
   }
   marquee.bar a { color: var(--ink); text-decoration: underline; }
@@ -144,7 +147,7 @@
   .themebar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13px; }
   .themebar .lbl { color: var(--ink-dim); }
   .themebtn {
-    font-family: 'Comic Sans MS', cursive; font-size: 13px; cursor: pointer;
+    font-family: var(--comic); font-size: 13px; cursor: pointer;
     background: var(--btn); color: var(--btn-ink); padding: 3px 10px;
     border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
   }
@@ -161,7 +164,7 @@
     border: 3px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
   }
   .uc span {
-    background: var(--panel-2); color: var(--accent-2); font-family: 'Comic Sans MS', cursive;
+    background: var(--panel-2); color: var(--accent-2); font-family: var(--comic);
     font-weight: bold; font-size: 18px; padding: 4px 14px; letter-spacing: 2px;
     border: 2px solid var(--accent);
   }
@@ -170,13 +173,13 @@
   /* title */
   .hero { position: relative; text-align: center; padding: 44px 10px 12px; }
   .hero-title {
-    font-family: 'Comic Sans MS', cursive; font-size: 58px; font-weight: bold; line-height: 1.05;
+    font-family: var(--comic); font-size: 58px; font-weight: bold; line-height: 1.05;
     color: var(--accent);
     text-shadow: 2px 2px 0 var(--bevel-dk), 4px 4px 0 rgba(61,139,255,0.25);
     -webkit-text-stroke: 1px var(--accent-2);
     letter-spacing: 1px;
   }
-  .hero-sub { font-family: 'Comic Sans MS', cursive; font-size: 24px; font-weight: bold; color: var(--accent-2); margin-top: 10px; letter-spacing: 3px; }
+  .hero-sub { font-family: var(--comic); font-size: 24px; font-weight: bold; color: var(--accent-2); margin-top: 10px; letter-spacing: 3px; }
   .hero-tagline { font-size: 17px; color: var(--ink); margin-top: 18px; }
   .starburst {
     position: absolute; top: 4px; right: 8px; width: 86px; height: 86px;
@@ -184,13 +187,13 @@
     background: var(--accent); animation: wobble96 0.9s steps(1) infinite;
     clip-path: polygon(50% 0%, 61% 15%, 78% 8%, 80% 26%, 98% 32%, 87% 46%, 100% 58%, 83% 65%, 86% 83%, 68% 80%, 60% 97%, 50% 82%, 40% 97%, 32% 80%, 14% 83%, 17% 65%, 0% 58%, 13% 46%, 2% 32%, 20% 26%, 22% 8%, 39% 15%);
   }
-  .starburst span { color: #fff; font-family: 'Comic Sans MS', cursive; font-weight: bold; font-size: 16px; transform: rotate(-12deg); text-align: center; line-height: 1.1; }
+  .starburst span { color: #fff; font-family: var(--comic); font-weight: bold; font-size: 16px; transform: rotate(-12deg); text-align: center; line-height: 1.1; }
 
   /* CTA */
   .cta-wrap { text-align: center; margin: 36px 0 8px; }
   .cta {
     display: inline-block; animation: pulse96 0.8s steps(1) infinite;
-    font-family: 'Comic Sans MS', cursive; font-size: 26px; font-weight: bold;
+    font-family: var(--comic); font-size: 26px; font-weight: bold;
     color: #fff; background: var(--accent); padding: 16px 36px; text-decoration: none;
     border: 5px solid; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2);
   }
@@ -201,7 +204,7 @@
   /* social links */
   .social { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 22px; }
   .soc {
-    font-family: 'Comic Sans MS', cursive; font-size: 17px; font-weight: bold; color: #fff;
+    font-family: var(--comic); font-size: 17px; font-weight: bold; color: #fff;
     background: var(--accent); padding: 9px 22px; text-decoration: none;
     border: 3px solid; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2);
   }
@@ -213,7 +216,7 @@
   /* points counter */
   .counter { text-align: center; padding: 26px 14px; margin: 0 12px; background: var(--panel-2);
     border: 3px solid; border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
-  .counter .cap { font-family: 'Comic Sans MS', cursive; font-size: 20px; color: var(--accent-2); font-weight: bold; }
+  .counter .cap { font-family: var(--comic); font-size: 20px; color: var(--accent-2); font-weight: bold; }
   #points {
     font-family: 'Courier New', monospace; font-size: 46px; font-weight: bold; color: var(--led);
     background: var(--led-bg); display: inline-block; padding: 6px 26px; margin-top: 16px;
@@ -225,13 +228,13 @@
   /* claim */
   .claim-wrap { text-align: center; margin: 40px 0; }
   #claim-btn {
-    font-family: 'Comic Sans MS', cursive; font-size: 28px; font-weight: bold;
+    font-family: var(--comic); font-size: 28px; font-weight: bold;
     color: var(--btn-ink); background: var(--btn); padding: 14px 40px; cursor: pointer;
     border: 5px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
   }
   #claim-btn:active { border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
   #turbo-btn {
-    font-family: 'Comic Sans MS', cursive; font-size: 16px; font-weight: bold;
+    font-family: var(--comic); font-size: 16px; font-weight: bold;
     color: #fff; background: var(--accent); padding: 6px 20px; cursor: pointer; letter-spacing: 1px;
     border: 3px solid; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2);
   }
@@ -243,7 +246,7 @@
   /* section headers + tables */
   .sec { margin: 0 12px; }
   .sec-h {
-    font-family: 'Comic Sans MS', cursive; font-size: 26px; font-weight: bold; color: var(--accent-2);
+    font-family: var(--comic); font-size: 26px; font-weight: bold; color: var(--accent-2);
     text-align: center; background: var(--panel-2); padding: 8px;
     border: 3px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt);
   }
@@ -253,7 +256,7 @@
     border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk);
     color: var(--ink);
   }
-  table.t95 th { background: var(--accent); color: #fff; font-family: 'Comic Sans MS', cursive; }
+  table.t95 th { background: var(--accent); color: #fff; font-family: var(--comic); }
   table.t95 .k { background: var(--panel); color: var(--accent-2); font-weight: bold; text-align: center; width: 96px; }
   .accent-txt { color: var(--accent-2); font-weight: bold; }
 
@@ -265,7 +268,7 @@
 
   /* badges */
   .badges { display: flex; justify-content: center; gap: 26px; flex-wrap: wrap; align-items: center; }
-  .gbook { font-family: 'Comic Sans MS', cursive; font-size: 18px; font-weight: bold; color: var(--accent); background: var(--btn); padding: 8px 18px; text-decoration: underline;
+  .gbook { font-family: var(--comic); font-size: 18px; font-weight: bold; color: var(--accent); background: var(--btn); padding: 8px 18px; text-decoration: underline;
     border: 4px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
   .badge { font-size: 13px; padding: 8px 12px; text-align: center; line-height: 1.4; text-decoration: none;
     border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); background: var(--panel-2); color: var(--ink); }
@@ -300,6 +303,12 @@
     border: 2px solid; border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
 
   @media (max-width: 480px) {
+    /* phones lack Comic Sans; its cursive fallback is a thin, near-unreadable
+       script. Force a readable comic/sans stack (Chalkboard SE on iOS, bold
+       system sans on Android). Desktop is untouched. */
+    :root, [data-theme="dark"], [data-theme="light"] {
+      --comic: 'Chalkboard SE', 'Comic Neue', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    }
     .box { padding: 14px 8px 20px; }
     .hero { padding: 34px 6px 10px; }
     .hero-title { font-size: 34px; }
@@ -337,9 +346,9 @@
 
     <!-- under construction -->
     <div class="uc">
-      <img src="gifs/digger.gif" alt="" width="34" height="34">
+      <img src="gifs/digger.gif" alt="" width="34" height="34" decoding="async">
       <span>🚧 UNDER CONSTRUCTION 🚧</span>
-      <img src="gifs/digger.gif" alt="" width="34" height="34">
+      <img src="gifs/digger.gif" alt="" width="34" height="34" decoding="async">
     </div>
 
     <!-- title -->
@@ -430,7 +439,7 @@
 
     <!-- hit counter -->
     <div class="hits">
-      <img src="gifs/globe.gif" alt="" width="72" height="72">
+      <img src="gifs/globe.gif" alt="" width="72" height="72" loading="lazy" decoding="async">
       <div style="font-size:16px;color:var(--ink);">You are visitor #</div>
       <div class="frame"><span id="visitor-number">000004</span></div>
       <div class="fine">(counter provided by FreeHitCounterz.geo — since 1996)</div>
@@ -438,9 +447,9 @@
 
     <!-- footer -->
     <div class="foot">
-      <img src="gifs/digger.gif" alt="" width="22" height="22">
+      <img src="gifs/digger.gif" alt="" width="22" height="22" loading="lazy" decoding="async">
       <span class="hot" style="color:var(--ink-dim);">Page under construction forever</span>
-      <img src="gifs/digger.gif" alt="" width="22" height="22"><br>
+      <img src="gifs/digger.gif" alt="" width="22" height="22" loading="lazy" decoding="async"><br>
       <a href="https://x.com/helixpoints">Twitter</a> · <a href="https://t.me/helixpoints">Telegram</a> · <a href="https://pump.trippyinj.xyz/launch/8">Trippy Pump</a><br>
       © 1997 $HELIXPOINT WebRing™ · Last updated: 03/14/1997
     </div>
