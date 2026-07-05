@@ -7,7 +7,7 @@ Live at [wenpoints.xyz](https://wenpoints.xyz).
 ## How it works
 
 - Static site in [`site/`](site/), no build step, no dependencies. Notepad.exe energy.
-- **Small changes**: commit to `main` — the deploy workflow publishes straight to wenpoints.xyz.
-- **Large changes**: open a PR — a preview deploys to `https://wenpoints.xyz/pr-preview/pr-<number>/` (link is commented on the PR) and is removed when the PR closes.
+- **Small changes**: commit to `main` — the deploy workflow publishes straight to wenpoints.xyz (~1 min).
+- **Large changes**: open a PR — a live preview link (raw.githack.com, served from the PR branch) is commented on the PR automatically.
 
-Hosting: GitHub Pages (`gh-pages` branch). DNS: Cloudflare.
+Hosting: GitHub Pages via **GitHub Actions** (`actions/deploy-pages`, not deploy-from-branch — avoids the slow legacy build). DNS: Cloudflare.
