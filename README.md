@@ -1,6 +1,6 @@
 # wenpoints.xyz
 
-$SOON — THE POINTS TOKEN. A loving parody of Helix Points, served in authentic 1997 Geocities style.
+$SOON — THE POINTS TOKEN. Served in authentic 1997 Geocities style.
 
 Live at [wenpoints.xyz](https://wenpoints.xyz).
 
