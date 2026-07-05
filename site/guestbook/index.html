@@ -298,6 +298,20 @@
     } catch (e) { /* transient RPC hiccup; next tick retries */ }
   }
   function startPoll() { if (!pollTimer) pollTimer = setInterval(refresh, 12000); } // live updates via polling
+  // confirm a write by watching for the post to appear (event/state is consistent across RPC
+  // nodes; eth_getTransactionReceipt by hash is flaky on Injective's load-balanced RPC)
+  function waitForPost(message, author, timeoutMs) {
+    var start = Date.now(), a = author.toLowerCase();
+    return new Promise(function (resolve) {
+      (function tick() {
+        refresh().then(function () {
+          if (posts.some(function (p) { return p.text === message && p.addr.toLowerCase() === a; })) return resolve(true);
+          if (Date.now() - start > timeoutMs) return resolve(false);
+          setTimeout(tick, 2500);
+        });
+      })();
+    });
+  }
 
   /* ---------- compose ---------- */
   var msgEl = $("msg"), counterEl = $("counter"), signBtn = $("sign-btn");
@@ -314,12 +328,11 @@
     if (!text) { toast("Write something first."); return; }
     signBtn.disabled = true; signBtn.textContent = "Signing…";
     try {
-      var hash = await GB.sendPost(activeProvider, account, text);
+      await GB.sendPost(activeProvider, account, text); // returns a hash; we confirm via the post appearing
       signBtn.textContent = "Confirming…";
-      await GB.waitReceipt(hash, 120000);
-      msgEl.value = ""; updateCounter();
-      toast("Signed on-chain! 🎉");
-      await refresh(); // the new post arrives via its PostCreated event
+      var landed = await waitForPost(text, account, 120000);
+      if (landed) { msgEl.value = ""; updateCounter(); toast("Signed on-chain! 🎉"); }
+      else { toast("Sent — still confirming, it'll appear shortly."); }
     } catch (err) {
       var code = err && (err.code || (err.data && err.data.originalError && err.data.originalError.code));
       toast(code === 4001 ? "Transaction rejected." : (code === -32000 ? "Not enough INJ for gas." : "Post failed — check the explorer."));

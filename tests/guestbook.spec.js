@@ -109,17 +109,18 @@ test('compose is gated until a wallet connects', async ({ page }) => {
   await expect(page.locator('#sign-btn')).toBeDisabled();
 });
 
-test('signing sends a tx, waits for the receipt, and the post arrives via events', async ({ page }) => {
+test('signing sends a tx and the post is confirmed once it appears via events', async ({ page }) => {
   const state = await routeChain(page, { logs: [], latest: LATEST });
-  state.onReceipt = () => { // once the tx confirms, the next getLogs returns the new post
-    state.latest = LATEST + 1;
-    state.logs = [makeLog('0xAbC0000000000000000000000000000000001234', 0, 'hello chain', LATEST + 1)];
-  };
   await connect(page);
   await page.fill('#msg', 'hello chain');
-  await page.click('#sign-btn');
+  await page.click('#sign-btn'); // sends the tx; the page now polls events to confirm
+  // reveal the post on chain — the confirmation poll picks it up (no reliance on tx-by-hash receipt)
+  state.latest = LATEST + 1;
+  state.logs = [makeLog('0xAbC0000000000000000000000000000000001234', 0, 'hello chain', LATEST + 1)];
   await expect(page.locator('#posts .post-body').first()).toHaveText('hello chain');
   expect(await page.evaluate(() => window.__calls)).toContain('eth_sendTransaction');
+  await expect(page.locator('#msg')).toHaveValue('');       // textarea cleared on success
+  await expect(page.locator('#sign-btn')).toHaveText('Sign'); // button reset (no longer "Confirming…")
 });
 
 test('switching the wallet account updates the UI; locking disconnects', async ({ page }) => {
