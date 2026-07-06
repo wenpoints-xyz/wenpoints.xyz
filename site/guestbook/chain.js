@@ -22,6 +22,28 @@
     LOG_CHUNK: 9000
   };
 
+  // ---- $HELIXPOINT holder-badge config (Cosmos bank side, via LCD) ----
+  // Guestbook posters are EVM 0x addresses; the token balance lives on the Cosmos bank
+  // module keyed by the inj1 address = bech32("inj", same 20 account bytes).
+  var TOKEN = {
+    DENOM: "factory/inj13j2rpnlwl30c02d4pzukykwfeyyhelvry9cqte/shroom_8_be9bddf36b94db69",
+    DECIMALS: 18,                       // denoms_metadata is Not Implemented on Injective LCD;
+                                        // supply is exactly 1e9 with 18dp -> hard-coded with evidence.
+    LCD: [                              // tried in order; first success wins, all-fail -> no badges
+      "https://sentry.lcd.injective.network",
+      "https://lcd.injective.network",
+      "https://injective-api.polkachu.com"
+    ],
+    // descending; tierOf returns the first tier whose min (in whole tokens) is met. any dust >0 -> plankton.
+    TIERS: [
+      { key: "whale",    min: 100000000n, icon: "🐋", label: "whale" },
+      { key: "dolphin",  min: 10000000n,  icon: "🐬", label: "dolphin" },
+      { key: "fish",     min: 1000000n,   icon: "🐟", label: "fish" },
+      { key: "shrimp",   min: 100000n,    icon: "🦐", label: "shrimp" },
+      { key: "plankton", min: 1n,         icon: "🦠", label: "plankton" }
+    ]
+  };
+
   // ---- hex / utf8 helpers ----
   function strip0x(h) { return h.indexOf("0x") === 0 ? h.slice(2) : h; }
   function pad32(hexNo0x) { while (hexNo0x.length % 64 !== 0) hexNo0x += "0"; return hexNo0x; }
@@ -111,11 +133,107 @@
     return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: CONFIG.CONTRACT, data: encodeDeleteCalldata(index) }] });
   }
 
+  // ---- bech32 (BIP173) encode: 0x EVM address -> inj1 Cosmos address ----
+  var B32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+  function b32Polymod(vals) {
+    var GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3], chk = 1;
+    for (var p = 0; p < vals.length; p++) {
+      var top = chk >>> 25; chk = ((chk & 0x1ffffff) << 5) ^ vals[p];
+      for (var i = 0; i < 5; i++) if ((top >>> i) & 1) chk ^= GEN[i];
+    }
+    return chk >>> 0;
+  }
+  function b32HrpExpand(hrp) {
+    var o = [], i;
+    for (i = 0; i < hrp.length; i++) o.push(hrp.charCodeAt(i) >>> 5);
+    o.push(0);
+    for (i = 0; i < hrp.length; i++) o.push(hrp.charCodeAt(i) & 31);
+    return o;
+  }
+  function b32Checksum(hrp, data) {
+    var mod = b32Polymod(b32HrpExpand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0])) ^ 1, o = [];
+    for (var i = 0; i < 6; i++) o.push((mod >>> (5 * (5 - i))) & 31);
+    return o;
+  }
+  function bits8to5(bytes) {
+    var acc = 0, bits = 0, o = [];
+    for (var i = 0; i < bytes.length; i++) {
+      acc = (acc << 8) | bytes[i]; bits += 8;   // 20-byte input -> acc stays well within 32-bit
+      while (bits >= 5) { bits -= 5; o.push((acc >>> bits) & 31); }
+    }
+    if (bits > 0) o.push((acc << (5 - bits)) & 31);
+    return o;
+  }
+  function bech32Encode(hrp, bytes) {
+    var data = bits8to5(bytes), comb = data.concat(b32Checksum(hrp, data)), s = hrp + "1";
+    for (var i = 0; i < comb.length; i++) s += B32.charAt(comb[i]);
+    return s;
+  }
+  function evmToInj(addr) {
+    var h = strip0x(String(addr || "")).toLowerCase();
+    if (!/^[0-9a-f]{40}$/.test(h)) return null;
+    return bech32Encode("inj", hexToBytes(h));
+  }
+
+  // ---- LCD (Cosmos REST gateway) with endpoint fallback ----
+  function lcd(path) {
+    var hosts = TOKEN.LCD, i = 0;
+    function tryNext() {
+      if (i >= hosts.length) return Promise.reject(new Error("all LCD endpoints failed"));
+      return fetch(hosts[i++] + path, { headers: { "Accept": "application/json" } })
+        .then(function (r) { if (!r.ok) throw new Error("lcd " + r.status); return r.json(); })
+        .catch(function () { return tryNext(); });
+    }
+    return tryNext();
+  }
+
+  // ---- holder map: one paginated denom_owners_by_query, cached per page load ----
+  // Query-param form (…_by_query?denom=) handles the slash-bearing factory denom; the path form rejects it.
+  var _holders = null;                 // Map(inj1(lowercase) -> BigInt raw)
+  function fetchHolders() {
+    if (_holders) return Promise.resolve(_holders);
+    var denom = encodeURIComponent(TOKEN.DENOM), map = new Map(), pages = 0, MAX = 25;
+    function page(key) {
+      var path = "/cosmos/bank/v1beta1/denom_owners_by_query?denom=" + denom + "&pagination.limit=1000";
+      if (key) path += "&pagination.key=" + encodeURIComponent(key);
+      return lcd(path).then(function (j) {
+        var owners = (j && j.denom_owners) || [];
+        for (var k = 0; k < owners.length; k++) {
+          var o = owners[k];
+          if (o && o.address && o.balance && o.balance.amount) map.set(o.address.toLowerCase(), toBig(o.balance.amount));
+        }
+        var next = j && j.pagination && j.pagination.next_key;
+        return (next && ++pages < MAX) ? page(next) : map;
+      });
+    }
+    return page(null).then(function (m) { _holders = m; return m; })
+      .catch(function () { _holders = new Map(); return _holders; });   // fail-silent: no badges, posts unaffected
+  }
+  function toBig(s) { try { return BigInt(s); } catch (e) { return 0n; } }
+
+  function balanceOf(map, addr) {
+    if (!map) return 0n;
+    var inj = evmToInj(addr);
+    if (!inj) return 0n;
+    return map.get(inj.toLowerCase()) || 0n;
+  }
+  function tierOf(raw) {
+    if (!raw || raw <= 0n) return null;
+    var whole = raw / (10n ** BigInt(TOKEN.DECIMALS)), T = TOKEN.TIERS;
+    for (var i = 0; i < T.length; i++) {
+      if (whole >= T[i].min) return { key: T[i].key, icon: T[i].icon, label: T[i].label, whole: whole };
+    }
+    var p = T[T.length - 1];                          // dust (>0 but <1 whole token) still shows plankton
+    return { key: p.key, icon: p.icon, label: p.label, whole: whole };
+  }
+
   window.GB = {
     CONFIG: CONFIG,
     encodePostCalldata: encodePostCalldata, encodeDeleteCalldata: encodeDeleteCalldata,
     decodePostCreated: decodePostCreated, decodePostDeleted: decodePostDeleted,
     rpc: rpc, blockNumber: blockNumber, getEvents: getEvents, blockTime: blockTime, isAdmin: isAdmin,
-    sendPost: sendPost, sendDelete: sendDelete
+    sendPost: sendPost, sendDelete: sendDelete,
+    TOKEN: TOKEN, bech32Encode: bech32Encode, evmToInj: evmToInj,
+    fetchHolders: fetchHolders, balanceOf: balanceOf, tierOf: tierOf
   };
 })();

@@ -105,8 +105,10 @@
   .post { background:var(--panel-2); padding:12px 14px;
     border:2px solid; border-color:var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
   .post-head { display:flex; justify-content:space-between; gap:10px; font-size:13px; margin-bottom:6px; }
+  .post-who { display:inline-flex; align-items:center; gap:6px; min-width:0; }
   .post-addr { font-family:'Courier New',monospace; font-weight:bold; color:var(--accent-2); }
-  .post-time { color:var(--ink-dim); }
+  .post-tier { font-size:15px; line-height:1; cursor:default; }   /* $HELIXPOINT holder badge (filled in async) */
+  .post-time { color:var(--ink-dim); white-space:nowrap; }
   .post-del { font-family:var(--comic); font-size:11px; cursor:pointer; color:#fff; background:var(--bad); padding:2px 8px; margin-left:8px;
     border:2px solid; border-color:var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
   .post-del[disabled] { opacity:.6; cursor:default; }
@@ -242,10 +244,14 @@
 
   function makePost(p) {
     var li = document.createElement("li"); li.className = "post";
+    if (isAddr(p.addr)) li.dataset.addr = p.addr;                 // annotate() reads this to look up the holder badge
     var head = document.createElement("div"); head.className = "post-head";
+    var who = document.createElement("span"); who.className = "post-who";
     var addr = document.createElement("span"); addr.className = "post-addr"; addr.textContent = shortAddr(p.addr); // textContent = XSS-safe
+    var tier = document.createElement("span"); tier.className = "post-tier"; // filled in by annotate() from the cached holder map
+    who.appendChild(addr); who.appendChild(tier);
     var time = document.createElement("span"); time.className = "post-time"; time.textContent = relTime(p.ts);
-    head.appendChild(addr); head.appendChild(time);
+    head.appendChild(who); head.appendChild(time);
     if (adminMode) {
       var del = document.createElement("button"); del.type = "button"; del.className = "post-del";
       del.textContent = "🗑 delete"; del.setAttribute("aria-label", "Delete this post (admin)");
@@ -266,8 +272,28 @@
     var more = shown < visible.length;
     loadmoreEl.hidden = !more;
     endEl.hidden = more;
+    annotate();
   }
   loadmoreEl.addEventListener("click", function () { shown += PAGE; renderList(); });
+
+  /* ---------- $HELIXPOINT holder badges (isolated decorator; fails silent) ---------- */
+  // renderList() rebuilds every .post on each poll, so annotate() re-runs and is idempotent:
+  // it reads the cached holder map (zero network) and sets/clears each post's .post-tier badge.
+  var holderMap = null;
+  function annotate() {
+    if (!holderMap) return;                          // map not loaded yet; posts render badge-less
+    var nodes = postsEl.querySelectorAll(".post");
+    for (var i = 0; i < nodes.length; i++) {
+      var span = nodes[i].querySelector(".post-tier");
+      if (!span) continue;
+      var tier = GB.tierOf(GB.balanceOf(holderMap, nodes[i].dataset.addr));
+      if (tier) {
+        span.textContent = tier.icon;
+        span.title = tier.icon + " " + tier.label + " · " + Number(tier.whole).toLocaleString("en-US") + " $HELIXPOINT";
+      } else { span.textContent = ""; span.removeAttribute("title"); }
+    }
+  }
+  GB.fetchHolders().then(function (m) { holderMap = m; annotate(); });   // one deferred fetch per page load
 
   /* ---------- read posts from chain (PostCreated + PostDeleted events) ---------- */
   var seenIndex = {};
