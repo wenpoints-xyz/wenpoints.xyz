@@ -148,6 +148,26 @@
   .link-actions .btn { text-decoration:none; display:inline-block; }
   .btn.ghost { background:var(--btn); color:var(--btn-ink); }
 
+  /* tipping: per-post footer + modal */
+  .post-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px; flex-wrap:wrap; }
+  .tip-totals { font-size:13px; color:var(--ink-dim); }
+  .tip-totals b { color:var(--accent-2); font-family:'Courier New',monospace; }
+  .tip-btn { font-family:var(--comic); font-weight:bold; font-size:13px; cursor:pointer; color:var(--btn-ink); background:var(--btn);
+    padding:4px 12px; border:2px solid; border-color:var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
+  .tipbox { padding:14px 16px 16px; }
+  .tip-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .tip-lbl { width:56px; font-size:13px; color:var(--ink-dim); }
+  .tip-tokens, .tip-amounts { display:flex; gap:6px; flex-wrap:wrap; }
+  .tip-chip { font-family:var(--comic); font-size:13px; cursor:pointer; background:var(--btn); color:var(--btn-ink); padding:5px 12px; min-height:32px;
+    border:2px solid; border-color:var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
+  .tip-chip[aria-pressed="true"] { background:var(--accent); color:#fff; border-color:var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2); }
+  .tip-input { width:100%; box-sizing:border-box; font-family:'Courier New',monospace; font-size:18px; padding:8px 10px; margin-top:4px;
+    background:var(--panel-2); color:var(--ink); border:2px solid; border-color:var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  .tip-bal { font-size:12px; color:var(--ink-dim); margin-top:6px; }
+  .tip-bal a { cursor:pointer; color:var(--accent-2); text-decoration:underline; }
+  .tip-status { font-size:13px; color:var(--accent-2); margin-top:10px; min-height:18px; }
+  .tip-actions { display:flex; justify-content:flex-end; margin-top:12px; }
+
   /* toast */
   .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:1000; max-width:92vw;
     background:var(--panel); color:var(--ink); font-size:14px; padding:10px 16px; display:none;
@@ -221,6 +241,21 @@
           <button type="button" class="btn ghost" id="link-cancel">Cancel</button>
           <a class="btn" id="link-go" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- tip modal -->
+  <div class="overlay" id="tip-overlay">
+    <div class="popup" role="dialog" aria-modal="true" aria-labelledby="tip-title">
+      <div class="titlebar"><span id="tip-title">💰 Tip this post</span><button id="tip-close" aria-label="Close">✕</button></div>
+      <div class="tipbox">
+        <div class="tip-row"><span class="tip-lbl">Token</span><div class="tip-tokens" id="tip-tokens" role="radiogroup" aria-label="Tip token"></div></div>
+        <div class="tip-row"><span class="tip-lbl">Amount</span><div class="tip-amounts" id="tip-presets"></div></div>
+        <input class="tip-input" id="tip-amount" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Tip amount">
+        <div class="tip-bal" id="tip-bal"></div>
+        <div class="tip-status" id="tip-status" aria-live="polite"></div>
+        <div class="tip-actions"><button type="button" class="btn" id="tip-go" disabled>Enter an amount</button></div>
       </div>
     </div>
   </div>
@@ -314,7 +349,12 @@
     }
     var body = document.createElement("div"); body.className = "post-body";
     body.appendChild(linkify(p.text));    // untrusted text -> text nodes + validated http(s) links (via warning modal)
-    li.appendChild(head); li.appendChild(body);
+    var foot = document.createElement("div"); foot.className = "post-foot";
+    var totals = document.createElement("span"); totals.className = "tip-totals"; renderTotals(totals, p.index); // 💰 amounts (empty if none)
+    var tipBtn = document.createElement("button"); tipBtn.type = "button"; tipBtn.className = "tip-btn"; tipBtn.textContent = "💰 Tip";
+    tipBtn.addEventListener("click", function () { openTip(p.index, p.addr); });
+    foot.appendChild(totals); foot.appendChild(tipBtn);
+    li.appendChild(head); li.appendChild(body); li.appendChild(foot);
     return li;
   }
   function renderList() {
@@ -350,8 +390,8 @@
   }
   GB.fetchHolders().then(function (m) { holderMap = m; annotate(); });   // one deferred fetch per page load
 
-  /* ---------- read posts from chain (PostCreated + PostDeleted events) ---------- */
-  var seenIndex = {};
+  /* ---------- read posts from chain (PostCreated + PostDeleted + Tipped events) ---------- */
+  var seenIndex = {}, tipsByIndex = {}, seenTip = {};   // tipsByIndex[index][tokenAddr] = BigInt total
   async function ingest(logs) {
     var added = false;
     for (var i = 0; i < logs.length; i++) {
@@ -359,6 +399,18 @@
       if (t0 === GB.CONFIG.TOPIC_DELETE.toLowerCase()) {           // admin hid a post
         deletedSet[GB.decodePostDeleted(logs[i]).index.toString()] = true; added = true; continue;
       }
+      if (t0 === GB.TIP.TOPIC_TIPPED.toLowerCase()) {              // a tip — aggregate per index+token
+        var lg = logs[i], dk = parseInt(lg.blockNumber, 16) + ":" + parseInt(lg.logIndex || "0x0", 16);
+        if (!seenTip[dk]) {
+          seenTip[dk] = 1;
+          var tp = GB.decodeTipped(lg), ik = tp.index.toString(), tk = tp.token.toLowerCase();
+          var bucket = (tipsByIndex[ik] = tipsByIndex[ik] || {});
+          bucket[tk] = (bucket[tk] || 0n) + tp.amount;
+          added = true;
+        }
+        continue;
+      }
+      if (t0 !== GB.CONFIG.TOPIC_POST.toLowerCase()) continue;     // defensive: only decode PostCreated below
       var d = GB.decodePostCreated(logs[i]);
       var key = d.index.toString();
       if (seenIndex[key]) continue;
@@ -657,6 +709,140 @@
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
+
+  /* ---------- tipping (USDC / USDT / INJ-via-wINJ) ---------- */
+  var tipOverlay = $("tip-overlay"), tipTokensEl = $("tip-tokens"), tipPresetsEl = $("tip-presets"),
+      tipAmountEl = $("tip-amount"), tipBalEl = $("tip-bal"), tipStatusEl = $("tip-status"), tipGoEl = $("tip-go"),
+      tipState = null, tipBusy = false, tipLastFocus = null;
+  function tokLabel(t) { return t.wrap ? "INJ" : t.symbol; }
+
+  // fill a post's totals span from the aggregated Tipped events (empty when no tips)
+  function renderTotals(span, index) {
+    span.textContent = "";
+    var m = tipsByIndex[index.toString()]; if (!m) return;
+    var parts = [];
+    GB.TIP.TOKENS.forEach(function (t) { var raw = m[t.address.toLowerCase()]; if (raw && raw > 0n) parts.push(GB.fromRaw(raw, t.decimals) + " " + t.symbol); });
+    if (!parts.length) return;
+    span.appendChild(document.createTextNode("💰 "));
+    var b = document.createElement("b"); b.textContent = parts.join(" · "); span.appendChild(b);
+  }
+
+  function openTip(index, author) {
+    if (!account) { openWallet(); return; }
+    tipState = { index: index, author: author, token: GB.TIP.TOKENS[0] };
+    tipBusy = false; tipStatusEl.textContent = ""; tipAmountEl.value = "";
+    renderTokenChips(); renderPresetChips(); refreshTipBalance(); updateTipGo();
+    tipLastFocus = document.activeElement;
+    tipOverlay.style.display = "flex";
+    var c = tipTokensEl.querySelector(".tip-chip"); if (c) c.focus();
+  }
+  function closeTip() { tipOverlay.style.display = "none"; tipState = null; if (tipLastFocus && tipLastFocus.focus) tipLastFocus.focus(); }
+
+  function renderTokenChips() {
+    tipTokensEl.textContent = "";
+    GB.TIP.TOKENS.forEach(function (t) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "tip-chip"; b.setAttribute("role", "radio");
+      b.textContent = tokLabel(t);
+      var on = t === tipState.token; b.setAttribute("aria-pressed", on ? "true" : "false"); b.setAttribute("aria-checked", on ? "true" : "false");
+      b.addEventListener("click", function () { tipState.token = t; renderTokenChips(); renderPresetChips(); refreshTipBalance(); updateTipGo(); });
+      tipTokensEl.appendChild(b);
+    });
+  }
+  function renderPresetChips() {
+    tipPresetsEl.textContent = "";
+    tipState.token.presets.forEach(function (v) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "tip-chip"; b.textContent = v;
+      b.addEventListener("click", function () { tipAmountEl.value = v; updateTipGo(); });
+      tipPresetsEl.appendChild(b);
+    });
+  }
+  function refreshTipBalance() {
+    var t = tipState.token; tipBalEl.textContent = "balance: …";
+    var read = t.wrap ? GB.nativeBalance(account) : GB.erc20BalanceOf(t.address, account);
+    read.then(function (bal) {
+      if (!tipState || tipState.token !== t) return;
+      tipBalEl.textContent = "balance: " + GB.fromRaw(bal, t.decimals) + " " + tokLabel(t) + "  ";
+      var max = document.createElement("a"); max.textContent = "Max"; max.setAttribute("role", "button"); max.tabIndex = 0;
+      max.addEventListener("click", function () { tipAmountEl.value = GB.fromRaw(bal, t.decimals); updateTipGo(); });
+      tipBalEl.appendChild(max);
+    });
+  }
+  function updateTipGo() {
+    if (tipBusy) return;
+    var raw = GB.toRaw(tipAmountEl.value, tipState.token.decimals);
+    if (raw <= 0n) { tipGoEl.disabled = true; tipGoEl.textContent = "Enter an amount"; }
+    else { tipGoEl.disabled = false; tipGoEl.textContent = "Tip " + tipAmountEl.value + " " + tokLabel(tipState.token); }
+  }
+  tipAmountEl.addEventListener("input", updateTipGo);
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function pollUntil(fn, timeoutMs) {
+    var start = Date.now();
+    return (function tick() {
+      return fn().then(function (ok) {
+        if (ok) return true;
+        if (Date.now() - start > timeoutMs) return false;
+        return sleep(2500).then(tick);
+      });
+    })();
+  }
+  function waitForTip(index, tokenAddr, timeoutMs) {
+    var cur = function () { var m = tipsByIndex[index.toString()]; return (m && m[tokenAddr.toLowerCase()]) || 0n; };
+    var before = cur(), start = Date.now();
+    return (function tick() {
+      return refresh().then(function () {
+        if (cur() > before) return true;
+        if (Date.now() - start > timeoutMs) return false;
+        return sleep(2500).then(tick);
+      });
+    })();
+  }
+
+  tipGoEl.addEventListener("click", runTip);
+  async function runTip() {
+    if (!tipState || tipBusy) return;
+    var t = tipState.token, index = tipState.index, tokenAddr = t.address;
+    var raw = GB.toRaw(tipAmountEl.value, t.decimals);
+    if (raw <= 0n) return;
+    tipBusy = true; tipGoEl.disabled = true;
+    try {
+      await ensureInjective();
+      if (t.wrap) {                                     // INJ: wrap native -> wINJ if short
+        var winj = await GB.erc20BalanceOf(tokenAddr, account);
+        if (winj < raw) {
+          var need = raw - winj, injBal = await GB.nativeBalance(account);
+          if (injBal < need) { tipStatusEl.textContent = "not enough INJ (need " + GB.fromRaw(need, 18) + ")"; tipBusy = false; updateTipGo(); return; }
+          tipStatusEl.textContent = "Wrapping INJ → wINJ — check your wallet…";
+          await GB.sendWrap(activeProvider, account, need);
+          await pollUntil(function () { return GB.erc20BalanceOf(tokenAddr, account).then(function (b) { return b >= raw; }); }, 90000);
+        }
+      } else {
+        var bal = await GB.erc20BalanceOf(tokenAddr, account);
+        if (bal < raw) { tipStatusEl.textContent = "not enough " + t.symbol + " (balance " + GB.fromRaw(bal, t.decimals) + ")"; tipBusy = false; updateTipGo(); return; }
+      }
+      var allo = await GB.allowance(tokenAddr, account, GB.CONFIG.CONTRACT);   // exact-amount approve
+      if (allo < raw) {
+        tipStatusEl.textContent = "Approve " + (t.wrap ? "wINJ" : t.symbol) + " — check your wallet…";
+        await GB.sendApprove(activeProvider, account, tokenAddr, raw);
+        await pollUntil(function () { return GB.allowance(tokenAddr, account, GB.CONFIG.CONTRACT).then(function (a) { return a >= raw; }); }, 90000);
+      }
+      tipStatusEl.textContent = "Sending tip — check your wallet…";
+      await GB.sendTip(activeProvider, account, index, tokenAddr, raw);
+      tipStatusEl.textContent = "Confirming…";
+      var landed = await waitForTip(index, tokenAddr, 90000);
+      closeTip();
+      toast(landed ? "Tipped! 🎉" : "Sent — it'll show once confirmed.");
+    } catch (err) {
+      var code = err && err.code;
+      tipStatusEl.textContent = "";
+      toast(code === 4001 ? "Cancelled." : (code === -32000 ? "Not enough INJ for gas." : "Tip failed — try again."));
+      tipBusy = false; updateTipGo();
+    }
+  }
+
+  $("tip-close").addEventListener("click", function () { if (!tipBusy) closeTip(); });
+  tipOverlay.addEventListener("click", function (e) { if (e.target === tipOverlay && !tipBusy) closeTip(); });
+  tipOverlay.addEventListener("keydown", function (e) { if (e.key === "Escape" && !tipBusy) closeTip(); });
 
   /* ---------- toast ---------- */
   var toastEl = $("toast"), toastTimer = null;
