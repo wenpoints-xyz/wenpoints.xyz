@@ -1,27 +1,45 @@
 name: PR preview
 
-# Actions-native production Pages can't also serve branch subdirectories, so
-# previews use raw.githack.com — it serves any PR branch's files live from a
-# CDN with zero deploy. Instant, and it can never get stuck in "building".
+# Every PR deploys its branch to Cloudflare Pages (free, direct upload) at a real
+# root-served URL — so absolute asset paths, chain.js, wallet connect and on-chain
+# posting all work (raw.githack couldn't run the dApp: rate-limited + served under a
+# path prefix that broke absolute paths). One deploy per push; comments the URL.
 on:
   pull_request:
     types: [opened, reopened, synchronize]
 
 permissions:
+  contents: read
   pull-requests: write
 
 jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=wenpoints --branch=${{ github.head_ref }} --commit-dirty=true
+
+      - name: Comment preview URL
+        uses: actions/github-script@v7
         with:
           script: |
-            const ref = context.payload.pull_request.head.ref;
-            const repo = context.payload.repository.full_name;
-            const url = `https://raw.githack.com/${repo}/${ref}/site/index.html`;
+            const url = '${{ steps.deploy.outputs.deployment-url }}';
             const marker = '<!-- pr-preview -->';
-            const body = `${marker}\n🔎 **Live preview:** ${url}\n\nServed from this PR's branch via raw.githack.com — updates on every push, no deploy step.`;
+            const body = [
+              marker,
+              `🔎 **Live preview:** ${url}`,
+              '',
+              `📖 Guestbook: ${url}/guestbook/`,
+              '',
+              'Deployed to Cloudflare Pages from this PR — updates on every push. Served at root, so wallet connect + on-chain posting work against mainnet.',
+            ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
             });
