@@ -73,3 +73,31 @@ test('homepage teaser stays hidden when the guestbook is empty', async ({ page }
   await page.waitForTimeout(800);   // let the deferred idle callback run
   await expect(page.locator('#gb-peek')).toBeHidden();
 });
+
+test('a URL in a preview post opens the external-warning modal', async ({ page }) => {
+  await route(page, [ makeLog('0x1111111111111111111111111111111111111111', 0, 'gm see https://example.com/x cool', DEPLOY + 10) ]);
+  await page.goto('/');
+  const link = page.locator('#gb-peek .gb-peek-msg a.ext');
+  await expect(link).toHaveText('https://example.com/x');
+  await link.click();
+  await expect(page.locator('#link-overlay')).toBeVisible();
+  await expect(page.locator('#link-url')).toHaveText('https://example.com/x');
+  await expect(page.locator('#link-go')).toHaveAttribute('href', 'https://example.com/x');
+  await expect(page.locator('#link-go')).toHaveAttribute('rel', /noopener/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#link-overlay')).toBeHidden();
+});
+
+test('preview shows a loading skeleton, then swaps in the posts', async ({ page }) => {
+  await page.route(RPC, async (r) => {                        // hold eth_getLogs so the skeleton is observable
+    const req = JSON.parse(r.request().postData() || '{}');
+    let result = null;
+    if (req.method === 'eth_blockNumber') result = '0x' + LATEST.toString(16);
+    else if (req.method === 'eth_getLogs') { await new Promise(res => setTimeout(res, 700)); result = [ makeLog('0x2222222222222222222222222222222222222222', 0, 'loaded', DEPLOY + 10) ]; }
+    await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
+  });
+  await page.goto('/');
+  await expect(page.locator('#gb-peek .gb-peek-skel').first()).toBeVisible();          // placeholder while loading
+  await expect(page.locator('#gb-peek-list li.gb-peek-skel')).toHaveCount(0, { timeout: 4000 }); // replaced
+  await expect(page.locator('#gb-peek .gb-peek-msg').first()).toHaveText('loaded');
+});
