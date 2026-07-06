@@ -148,6 +148,25 @@
   .gb-peek-addr { color: var(--accent-2); font-family: monospace; font-size: 12px; margin-right: 7px; }
   .gb-peek-msg { color: var(--ink); word-break: break-word; }
   .gb-peek-more { display: inline-block; margin-top: 7px; font-size: 12px; color: var(--accent-2); }
+  .gb-peek-msg a.ext { color: var(--accent-2); text-decoration: underline; cursor: pointer; word-break: break-all; }
+  /* loading skeleton rows (stepped shimmer, on-brand) */
+  .gb-peek-skel .skel-bar { display: inline-block; height: 11px; vertical-align: middle; background: var(--bevel-lt);
+    animation: gbskel 1s steps(2, end) infinite; }
+  .gb-peek-skel:nth-child(1) .skel-bar { width: 78%; }
+  .gb-peek-skel:nth-child(2) .skel-bar { width: 62%; }
+  .gb-peek-skel:nth-child(3) .skel-bar { width: 88%; }
+  @keyframes gbskel { 0% { opacity: .3; } 100% { opacity: .65; } }
+  /* external-link warning modal (reuses .overlay/.popup/.titlebar) */
+  .linkwarn { padding: 14px 16px 16px; font-family: 'Times New Roman', serif; font-size: 15px; color: var(--ink); }
+  .linkwarn p { margin: 0 0 10px; }
+  .link-url { font-family: 'Courier New', monospace; font-size: 13px; word-break: break-all; background: var(--panel-2); color: var(--ink);
+    padding: 8px 10px; margin-bottom: 10px; border: 2px solid; border-color: var(--bevel-dk) var(--bevel-lt) var(--bevel-lt) var(--bevel-dk); }
+  .link-sub { color: var(--ink-dim); font-size: 12px; }
+  .link-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+  .link-actions a, .link-actions button { font-family: var(--comic); font-weight: bold; cursor: pointer; font-size: 14px;
+    padding: 6px 16px; text-decoration: none; border: 3px solid; }
+  .link-actions .go { background: var(--accent); color: #fff; border-color: var(--accent-2) var(--bevel-dk) var(--bevel-dk) var(--accent-2); }
+  .link-actions .cancel { background: var(--btn); color: var(--btn-ink); border-color: var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
   @media (max-width: 480px) { .gb-peek { font-size: 13px; } }
 
   /* ---- marquee ---- */
@@ -496,6 +515,22 @@
     </div>
   </div>
 
+  <!-- external-link warning (guestbook preview links) -->
+  <div class="overlay" id="link-overlay">
+    <div class="popup" role="dialog" aria-modal="true" aria-labelledby="link-title">
+      <div class="titlebar"><span id="link-title">⚠ You're leaving wenpoints</span><button class="link-close" aria-label="Close">✕</button></div>
+      <div class="linkwarn">
+        <p>This link points to an <b>external site</b>, outside wenpoints.xyz:</p>
+        <div class="link-url" id="link-url"></div>
+        <p class="link-sub">Guestbook links are posted by anyone on-chain — only continue if you trust it.</p>
+        <div class="link-actions">
+          <button type="button" class="cancel link-close">Cancel</button>
+          <a class="go" id="link-go" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function () {
   var VISITOR_NUMBER = 4, POINTS_PER_SECOND = 137, PUMP_URL = 'https://pump.trippyinj.xyz/launch/8';
@@ -617,22 +652,86 @@
       return step();
     });
   }
+  var boxEl = document.getElementById("gb-peek"), listEl = document.getElementById("gb-peek-list");
+
+  // Turn bare URLs in untrusted post text into links that open (new tab) only AFTER an
+  // "external site" warning modal. Built with textContent/createElement so text can't inject
+  // markup; only http(s)/www become links (javascript:/data: stay inert text).
+  var URL_RE = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+  function linkify(text) {
+    var frag = document.createDocumentFragment(), last = 0, m;
+    URL_RE.lastIndex = 0;
+    while ((m = URL_RE.exec(text))) {
+      var full = m[0], trail = "", tm = full.match(/[.,!?;:)\]]+$/);
+      if (tm) { trail = tm[0]; full = full.slice(0, -trail.length); }
+      var href = /^www\./i.test(full) ? "https://" + full : full;
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      if (/^https?:\/\/.+/i.test(href)) {
+        var a = document.createElement("a");
+        a.className = "ext"; a.textContent = full; a.title = href; a.setAttribute("data-href", href);
+        a.setAttribute("role", "link"); a.tabIndex = 0;
+        a.addEventListener("click", function (e) { e.preventDefault(); openLinkWarn(this.getAttribute("data-href")); });
+        a.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openLinkWarn(this.getAttribute("data-href")); } });
+        frag.appendChild(a);
+      } else { frag.appendChild(document.createTextNode(full)); }
+      if (trail) frag.appendChild(document.createTextNode(trail));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    return frag;
+  }
+
+  var linkOverlay = document.getElementById("link-overlay"),
+      linkUrlEl = document.getElementById("link-url"),
+      linkGo = document.getElementById("link-go"), linkLastFocus = null;
+  function openLinkWarn(href) {
+    if (!linkOverlay || !/^https?:\/\//i.test(href)) return;   // defensive: http(s) only
+    linkLastFocus = document.activeElement;
+    linkUrlEl.textContent = href; linkGo.href = href;          // textContent + validated href => no injection
+    linkOverlay.style.display = "flex";
+    var c = linkOverlay.querySelector(".cancel"); if (c) c.focus();
+  }
+  function closeLinkWarn() {
+    if (!linkOverlay) return;
+    linkOverlay.style.display = "none";
+    if (linkLastFocus && linkLastFocus.focus) linkLastFocus.focus();
+  }
+  if (linkOverlay) {
+    Array.prototype.forEach.call(linkOverlay.querySelectorAll(".link-close"), function (b) { b.addEventListener("click", closeLinkWarn); });
+    linkGo.addEventListener("click", closeLinkWarn);           // the anchor opens the tab (noopener); we just dismiss
+    linkOverlay.addEventListener("click", function (e) { if (e.target === linkOverlay) closeLinkWarn(); });
+    linkOverlay.addEventListener("keydown", function (e) { if (e.key === "Escape") closeLinkWarn(); });
+  }
+
+  function showSkeleton() {
+    if (!boxEl || !listEl) return;
+    listEl.textContent = "";
+    for (var i = 0; i < 3; i++) {
+      var li = document.createElement("li"); li.className = "gb-peek-skel";
+      var bar = document.createElement("span"); bar.className = "skel-bar";
+      li.appendChild(bar); listEl.appendChild(li);
+    }
+    boxEl.hidden = false;
+  }
   function render(posts) {
-    if (!posts || !posts.length) return;
-    var box = document.getElementById("gb-peek"), list = document.getElementById("gb-peek-list");
-    if (!box || !list) return;
+    if (!boxEl || !listEl) return;
+    if (!posts || !posts.length) { boxEl.hidden = true; return; }
+    listEl.textContent = "";                                    // clear the skeleton
     posts.forEach(function (p) {
       var li = document.createElement("li");
       var a = document.createElement("span"); a.className = "gb-peek-addr"; a.textContent = p.addr;
       var m = document.createElement("span"); m.className = "gb-peek-msg";
       var txt = (p.msg || "").replace(/\s+/g, " ").trim();
       if (txt.length > 120) txt = txt.slice(0, 120) + "…";
-      m.textContent = txt || "(gm)";
-      li.appendChild(a); li.appendChild(m); list.appendChild(li);   // textContent => XSS-safe
+      m.appendChild(linkify(txt || "(gm)"));                    // XSS-safe: text nodes + validated links
+      li.appendChild(a); li.appendChild(m); listEl.appendChild(li);
     });
-    box.hidden = false;
+    boxEl.hidden = false;
   }
-  function boot() { run().then(render).catch(function () { /* stay hidden */ }); }
+  function boot() {
+    showSkeleton();                                            // placeholder while we scan the chain
+    run().then(render).catch(function () { if (boxEl) boxEl.hidden = true; });
+  }
   if (window.requestIdleCallback) requestIdleCallback(boot, { timeout: 3000 });
   else window.addEventListener("load", function () { setTimeout(boot, 500); });
 })();
