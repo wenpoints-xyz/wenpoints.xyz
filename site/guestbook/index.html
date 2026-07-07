@@ -436,12 +436,19 @@
       setTimeout(loadInitial, 6000); return;
     } finally { $("shimmer").hidden = true; }
     startPoll();
+    loadTips();   // messages are already on screen; tips load async and fill in (like the holder badges)
+  }
+  // Deferred: the initial scan is posts+deletes only (messages show ASAP); tips are a separate
+  // enrichment pass so they never gate message display, growing tip volume can't slow the feed.
+  async function loadTips() {
+    try { await ingest(await GB.getEvents(GB.CONFIG.DEPLOY_BLOCK, lastBlock, [GB.TIP.TOPIC_TIPPED])); }
+    catch (e) { /* tips are non-essential; posts already rendered */ }
   }
   async function refresh() { // pull new events since lastBlock (after a write, and by the poll loop)
     try {
       var latest = await GB.blockNumber();
       if (latest <= lastBlock) return;
-      var logs = await GB.getEvents(lastBlock + 1, latest);
+      var logs = await GB.getEvents(lastBlock + 1, latest, [GB.CONFIG.TOPIC_POST, GB.CONFIG.TOPIC_DELETE, GB.TIP.TOPIC_TIPPED]);
       lastBlock = latest;
       await ingest(logs);
     } catch (e) { /* transient RPC hiccup; next tick retries */ }

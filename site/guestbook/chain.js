@@ -93,7 +93,9 @@
   function blockNumber() { return rpc("eth_blockNumber", []).then(function (h) { return parseInt(h, 16); }); }
 
   // fetch both PostCreated + PostDeleted logs across [from,to], chunked
-  function getEvents(fromBlock, toBlock) {
+  // topics defaults to posts+deletes so the message scan stays lean; tips are loaded separately (deferred).
+  function getEvents(fromBlock, toBlock, topics) {
+    topics = topics || [CONFIG.TOPIC_POST, CONFIG.TOPIC_DELETE];
     var chunks = [], f = fromBlock;
     while (f <= toBlock) { var t = Math.min(f + CONFIG.LOG_CHUNK, toBlock); chunks.push([f, t]); f = t + 1; }
     var out = [];
@@ -101,7 +103,7 @@
       return p.then(function () {
         return rpc("eth_getLogs", [{
           address: CONFIG.CONTRACT,
-          topics: [[CONFIG.TOPIC_POST, CONFIG.TOPIC_DELETE, TIP.TOPIC_TIPPED]],
+          topics: [topics],
           fromBlock: "0x" + rng[0].toString(16), toBlock: "0x" + rng[1].toString(16)
         }]).then(function (logs) { out = out.concat(logs); });
       });
