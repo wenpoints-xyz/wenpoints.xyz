@@ -591,14 +591,12 @@
 
 <script>
 /* Guestbook homepage teaser — deferred, zero-dependency, non-blocking, fails silent.
-   Runs on requestIdleCallback (after first paint), scans the last few block windows
-   for the 3 most-recent non-deleted PostCreated events, renders them XSS-safe. */
+   Runs on requestIdleCallback (after first paint); reads the 3 most-recent non-deleted posts
+   from contract state (count + one getPostsBlob), same as the guestbook. Renders XSS-safe. */
 (function () {
   var RPC = "https://sentry.evm-rpc.injective.network/",
       CONTRACT = "0xc71D862cD4E6b35F6aA29Fd908c27d1c4b2406EA",
-      T_POST = "0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac",
-      T_DEL  = "0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3",
-      DEPLOY = 172959998, WINDOW = 9000, MAX_WIN = 12, NEED = 3;
+      SEL_COUNT = "0x06661abd", SEL_POSTSBLOB = "0xef48eaa4", NEED = 3;
   var _id = 0;
   function rpc(method, params) {
     return fetch(RPC, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -606,50 +604,44 @@
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j.error) throw new Error(j.error.message || "rpc"); return j.result; });
   }
-  function getLogs(from, to) {
-    return rpc("eth_getLogs", [{ address: CONTRACT, topics: [[T_POST, T_DEL]],
-      fromBlock: "0x" + from.toString(16), toBlock: "0x" + to.toString(16) }]);
-  }
+  function ethCall(data) { return rpc("eth_call", [{ to: CONTRACT, data: data }, "latest"]); }
+  function pad(v) { return BigInt(v).toString(16).padStart(64, "0"); }
   function hexToUtf8(h) {
     h = h.replace(/^0x/, ""); var b = new Uint8Array(h.length / 2);
     for (var i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16);
     return new TextDecoder().decode(b);
   }
-  function decodeMsg(data) {
-    var d = data.replace(/^0x/, "");
-    var len = parseInt(d.slice(64, 128), 16) || 0;
-    return hexToUtf8(d.slice(128, 128 + len * 2));
-  }
-  function shortAddr(topic) {
-    var a = "0x" + topic.replace(/^0x/, "").slice(-40);
+  function shortAddr(addr) {
+    var a = "0x" + addr.replace(/^0x/, "").slice(-40);
     return a.slice(0, 6) + "…" + a.slice(-4);
   }
-  function bn(x) { return parseInt(x, 16); }
+  // getPostsBlob packed record: index(32) author(32) ts(32) deleted(32) msgLen(32) msg
+  function decodePostsBlob(hexret) {
+    var h = (hexret || "").replace(/^0x/, "");
+    if (h.length < 128) return [];
+    var len = parseInt(h.slice(64, 128), 16), d = h.slice(128, 128 + len * 2), out = [], p = 0;
+    while (p + 320 <= d.length) {
+      p += 64;                                              // index (unused by the teaser)
+      var author = "0x" + d.slice(p + 24, p + 64); p += 64;
+      p += 64;                                              // timestamp (unused)
+      var del = parseInt(d.slice(p, p + 64), 16) === 1; p += 64;
+      var mlen = parseInt(d.slice(p, p + 64), 16); p += 64;
+      out.push({ addr: shortAddr(author), msg: hexToUtf8(d.slice(p, p + mlen * 2)), deleted: del });
+      p += mlen * 2;
+    }
+    return out;
+  }
+  // Read the newest posts from contract state (count + one bounded getPostsBlob), newest NEED non-deleted.
   function run() {
-    return rpc("eth_blockNumber", []).then(function (h) {
-      var to = bn(h), deleted = {}, out = [], win = 0;
-      function step() {
-        if (to < DEPLOY || out.length >= NEED || win >= MAX_WIN) return Promise.resolve(out.slice(0, NEED));
-        var from = Math.max(DEPLOY, to - WINDOW + 1);
-        return getLogs(from, to).then(function (logs) {
-          logs.sort(function (a, b) {           // newest first
-            var d = bn(b.blockNumber) - bn(a.blockNumber);
-            return d !== 0 ? d : bn(b.logIndex || "0x0") - bn(a.logIndex || "0x0");
-          });
-          for (var i = 0; i < logs.length && out.length < NEED; i++) {
-            var lg = logs[i], t0 = (lg.topics[0] || "").toLowerCase();
-            if (t0 === T_DEL) { deleted[(lg.topics[1] || "").toLowerCase()] = 1; continue; }
-            if (t0 === T_POST) {
-              var key = (lg.topics[2] || "").toLowerCase();   // post index topic
-              if (deleted[key]) continue;                     // scanning newest-first: delete seen before its create
-              out.push({ addr: shortAddr(lg.topics[1]), msg: decodeMsg(lg.data) });
-            }
-          }
-          to = from - 1; win++;
-          return step();
-        });
-      }
-      return step();
+    return ethCall(SEL_COUNT).then(function (r) {
+      var n = parseInt(r, 16) || 0;
+      if (!n) return [];
+      var limit = Math.min(n, 12), offset = n - limit;      // bounded tail
+      return ethCall(SEL_POSTSBLOB + pad(offset) + pad(limit)).then(function (ret) {
+        var posts = decodePostsBlob(ret).filter(function (p) { return !p.deleted; });
+        posts.reverse();                                    // newest-first
+        return posts.slice(0, NEED);
+      });
     });
   }
   var boxEl = document.getElementById("gb-peek"), listEl = document.getElementById("gb-peek-list");

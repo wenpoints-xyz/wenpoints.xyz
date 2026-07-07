@@ -2,49 +2,40 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
-const T_POST = '0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac';   // PostCreated
-const T_DEL  = '0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3';   // PostDeleted
-// Derive the mocked RPC host + deploy block straight from the homepage script so this
-// tracks the mainnet cutover (same trick as guestbook.spec.js).
-const HTML   = fs.readFileSync(path.join(__dirname, '..', 'site', 'index.html'), 'utf8');
-const RPC    = '**' + new URL(HTML.match(/RPC\s*=\s*"([^"]+)"/)[1]).host + '**';
-const DEPLOY = parseInt(HTML.match(/DEPLOY\s*=\s*(\d+)/)[1], 10);
-const LATEST = DEPLOY + 100;   // small range -> one getLogs window
+// The homepage teaser now reads the newest posts from contract state (count + getPostsBlob), like the guestbook.
+const HTML = fs.readFileSync(path.join(__dirname, '..', 'site', 'index.html'), 'utf8');
+const RPC = '**' + new URL(HTML.match(/RPC\s*=\s*"([^"]+)"/)[1]).host + '**';
 
-// Build a PostCreated log exactly as the contract emits it, so the page decodes it for real.
-function makeLog(from, index, message, block) {
-  const author = '0x' + '0'.repeat(24) + from.slice(2).toLowerCase();
-  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
-  const bytes = Buffer.from(message, 'utf8');
-  const offset = (32).toString(16).padStart(64, '0');
-  const len = bytes.length.toString(16).padStart(64, '0');
-  let data = bytes.toString('hex');
-  while (data.length % 64 !== 0) data += '0';
-  return { topics: [T_POST, author, idx], data: '0x' + offset + len + data,
-    blockNumber: '0x' + block.toString(16), logIndex: '0x' + index.toString(16) };
+const hx = (v) => BigInt(v).toString(16).padStart(64, '0');
+function makePost(addr, index, msg, deleted) { return { index, addr, ts: 1751800000 + index, deleted: !!deleted, msg }; }
+function postsBlobRet(posts) {
+  let blob = '';
+  for (const p of posts) {
+    const mb = Buffer.from(p.msg, 'utf8');
+    blob += hx(p.index) + '0'.repeat(24) + p.addr.slice(2).toLowerCase() + hx(p.ts || 0) + hx(p.deleted ? 1 : 0) + hx(mb.length) + mb.toString('hex');
+  }
+  const len = blob.length / 2; let data = blob; while ((data.length / 2) % 32) data += '00';
+  return '0x' + hx(32) + hx(len) + data;
 }
-function makeDeleteLog(index, block) {
-  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
-  return { topics: [T_DEL, idx, '0x' + '0'.repeat(64)], data: '0x',
-    blockNumber: '0x' + block.toString(16), logIndex: '0x' + (index + 500).toString(16) };
-}
-
-async function route(page, logs) {
+async function route(page, posts, opts = {}) {
   await page.route(RPC, async (r) => {
     const req = JSON.parse(r.request().postData() || '{}');
-    let result = null;
-    if (req.method === 'eth_blockNumber') result = '0x' + LATEST.toString(16);
-    else if (req.method === 'eth_getLogs') result = logs;
+    let result = '0x' + hx(0);
+    if (req.method === 'eth_call') {
+      const sel = (req.params[0].data || '').slice(0, 10);
+      if (sel === '0x06661abd') result = '0x' + hx(posts.length);                       // count
+      else if (sel === '0xef48eaa4') { if (opts.delay) await new Promise((res) => setTimeout(res, opts.delay)); result = postsBlobRet(posts); } // getPostsBlob
+    }
     await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
   });
 }
 
 test('homepage teaser shows the 3 most-recent posts, newest first', async ({ page }) => {
   await route(page, [
-    makeLog('0x1111111111111111111111111111111111111111', 0, 'gm', DEPLOY + 10),
-    makeLog('0x2222222222222222222222222222222222222222', 1, 'points', DEPLOY + 11),
-    makeLog('0x3333333333333333333333333333333333333333', 2, 'wen airdrop', DEPLOY + 12),
-    makeLog('0x4444444444444444444444444444444444444444', 3, 'latest one', DEPLOY + 13),
+    makePost('0x1111111111111111111111111111111111111111', 0, 'gm'),
+    makePost('0x2222222222222222222222222222222222222222', 1, 'points'),
+    makePost('0x3333333333333333333333333333333333333333', 2, 'wen airdrop'),
+    makePost('0x4444444444444444444444444444444444444444', 3, 'latest one'),
   ]);
   await page.goto('/');
   await expect(page.locator('#gb-peek')).toBeVisible();
@@ -55,9 +46,8 @@ test('homepage teaser shows the 3 most-recent posts, newest first', async ({ pag
 
 test('homepage teaser hides deleted posts and renders markup inert', async ({ page }) => {
   await route(page, [
-    makeLog('0x1111111111111111111111111111111111111111', 0, '<img src=x onerror="window.__xss=1">', DEPLOY + 10),
-    makeLog('0x2222222222222222222222222222222222222222', 1, 'delete me', DEPLOY + 11),
-    makeDeleteLog(1, DEPLOY + 20),
+    makePost('0x1111111111111111111111111111111111111111', 0, '<img src=x onerror="window.__xss=1">'),
+    makePost('0x2222222222222222222222222222222222222222', 1, 'delete me', true),
   ]);
   await page.goto('/');
   await expect(page.locator('#gb-peek')).toBeVisible();
@@ -75,7 +65,7 @@ test('homepage teaser stays hidden when the guestbook is empty', async ({ page }
 });
 
 test('a URL in a preview post opens the external-warning modal', async ({ page }) => {
-  await route(page, [ makeLog('0x1111111111111111111111111111111111111111', 0, 'gm see https://example.com/x cool', DEPLOY + 10) ]);
+  await route(page, [ makePost('0x1111111111111111111111111111111111111111', 0, 'gm see https://example.com/x cool') ]);
   await page.goto('/');
   const link = page.locator('#gb-peek .gb-peek-msg a.ext');
   await expect(link).toHaveText('https://example.com/x');
@@ -89,13 +79,7 @@ test('a URL in a preview post opens the external-warning modal', async ({ page }
 });
 
 test('preview shows a loading skeleton, then swaps in the posts', async ({ page }) => {
-  await page.route(RPC, async (r) => {                        // hold eth_getLogs so the skeleton is observable
-    const req = JSON.parse(r.request().postData() || '{}');
-    let result = null;
-    if (req.method === 'eth_blockNumber') result = '0x' + LATEST.toString(16);
-    else if (req.method === 'eth_getLogs') { await new Promise(res => setTimeout(res, 700)); result = [ makeLog('0x2222222222222222222222222222222222222222', 0, 'loaded', DEPLOY + 10) ]; }
-    await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
-  });
+  await route(page, [ makePost('0x2222222222222222222222222222222222222222', 0, 'loaded') ], { delay: 700 }); // hold getPostsBlob
   await page.goto('/');
   await expect(page.locator('#gb-peek .gb-peek-skel').first()).toBeVisible();          // placeholder while loading
   await expect(page.locator('#gb-peek-list li.gb-peek-skel')).toHaveCount(0, { timeout: 4000 }); // replaced
