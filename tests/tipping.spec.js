@@ -7,7 +7,9 @@ const RPC = '**' + new URL(SRC.match(/rpc:\s*"([^"]+)"/)[1]).host + '**';
 const TIP_ADDRS = (SRC.match(/address:\s*"(0x[0-9a-fA-F]{40})"/g) || []).map((s) => s.match(/0x[0-9a-fA-F]{40}/)[0]).slice(0, 3);
 const USDC = TIP_ADDRS[0];
 const SEL_TIP = SRC.match(/SEL_TIP:\s*"([^"]+)"/)[1];
+const SEL_TIPNATIVE = SRC.match(/SEL_TIPNATIVE:\s*"([^"]+)"/)[1];
 const SEL_APPROVE = '0x095ea7b3';
+const WINJ = TIP_ADDRS[2];   // INJ token address (native tips recorded here)
 const ACCT = '0xAbC0000000000000000000000000000000001234';
 const BIG = 10n ** 30n;
 
@@ -108,6 +110,23 @@ test('tip needing approval fires approve then tip', async ({ page }) => {
   expect(sels.indexOf(SEL_APPROVE)).toBeLessThan(sels.indexOf(SEL_TIP));
   state.tips[0] = { [USDC.toLowerCase()]: 1000000n };
   await expect(page.locator('#toast')).toContainText('Tipped');
+});
+
+test('INJ tip is a single native tx (no approve/wrap) and totals update', async ({ page }) => {
+  const state = await routeState(page, { posts: [post(0, '0x1111111111111111111111111111111111111111', 'gm')], native: 10n ** 18n }); // 1 INJ
+  await connect(page);
+  await page.click('#posts .post .tip-btn');
+  await expect(page.locator('#tip-overlay')).toBeVisible();
+  await page.locator('#tip-tokens .tip-chip').nth(2).click();   // pick INJ
+  await page.fill('#tip-amount', '0.1');
+  await page.click('#tip-go');
+  await page.waitForFunction((s) => window.__sent.some((x) => (x.data || '').startsWith(s) && BigInt(x.value || '0x0') > 0n), SEL_TIPNATIVE);
+  const sels = await sentSelectors(page);
+  expect(sels).not.toContain(SEL_APPROVE);                      // native = no approve
+  expect(sels).toContain(SEL_TIPNATIVE);
+  state.tips[0] = { [WINJ.toLowerCase()]: 100000000000000000n }; // reveal 0.1 INJ under the wINJ key
+  await expect(page.locator('#toast')).toContainText('Tipped');
+  await expect(page.locator('#posts .post .tip-totals')).toContainText('0.1 INJ');
 });
 
 test('insufficient balance blocks the tip (no tx sent)', async ({ page }) => {

@@ -48,6 +48,10 @@ contract Guestbook is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable
     error AlreadyDeleted();
     error TipTokenNotAllowed();
     error ZeroAmount();
+    error NativeTransferFailed();
+
+    // Native INJ tips are recorded under the wINJ token key so native + any wINJ tip() display as one INJ total.
+    address public constant WRAPPED_NATIVE = 0x0000000088827d2d103ee2d9A6b781773AE03FfB; // mainnet wINJ (MTS)
 
     modifier onlyAdmin() {
         if (!isAdmin[msg.sender]) revert NotAdmin();
@@ -118,6 +122,19 @@ contract Guestbook is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable
         tipTotal[index][token] += amount;                           // effects before interaction (CEI)
         IERC20(token).safeTransferFrom(msg.sender, author, amount);
         emit Tipped(index, msg.sender, token, amount);
+    }
+
+    /// @notice Tip a post's author in NATIVE INJ — one tx (no wrap/approve). The author receives native INJ.
+    ///         Recorded under the wINJ key so it displays as INJ alongside any wINJ tips. Non-custodial.
+    function tipNative(uint256 index) external payable nonReentrant {
+        if (index >= _posts.length) revert NoSuchPost();
+        if (deleted[index]) revert AlreadyDeleted();
+        if (msg.value == 0) revert ZeroAmount();
+        address author = _posts[index].author;
+        tipTotal[index][WRAPPED_NATIVE] += msg.value;               // effects before interaction (CEI)
+        (bool ok, ) = payable(author).call{value: msg.value}("");   // forward native INJ to the author
+        if (!ok) revert NativeTransferFailed();
+        emit Tipped(index, msg.sender, WRAPPED_NATIVE, msg.value);
     }
 
     // ---- state reads (so clients read posts/tips via eth_call pagination, not a full log scan) ----
