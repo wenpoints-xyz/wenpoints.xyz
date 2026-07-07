@@ -93,7 +93,9 @@
   function blockNumber() { return rpc("eth_blockNumber", []).then(function (h) { return parseInt(h, 16); }); }
 
   // fetch both PostCreated + PostDeleted logs across [from,to], chunked
-  function getEvents(fromBlock, toBlock) {
+  // topics defaults to posts+deletes so the message scan stays lean; tips are loaded separately (deferred).
+  function getEvents(fromBlock, toBlock, topics) {
+    topics = topics || [CONFIG.TOPIC_POST, CONFIG.TOPIC_DELETE];
     var chunks = [], f = fromBlock;
     while (f <= toBlock) { var t = Math.min(f + CONFIG.LOG_CHUNK, toBlock); chunks.push([f, t]); f = t + 1; }
     var out = [];
@@ -101,7 +103,7 @@
       return p.then(function () {
         return rpc("eth_getLogs", [{
           address: CONFIG.CONTRACT,
-          topics: [[CONFIG.TOPIC_POST, CONFIG.TOPIC_DELETE]],
+          topics: [topics],
           fromBlock: "0x" + rng[0].toString(16), toBlock: "0x" + rng[1].toString(16)
         }]).then(function (logs) { out = out.concat(logs); });
       });
@@ -227,6 +229,70 @@
     return { key: p.key, icon: p.icon, label: p.label, whole: whole };
   }
 
+  // ---- tipping (USDC / USDT / INJ-via-wINJ; all ERC20; recorded on-chain via Tipped events) ----
+  var TIP = {
+    WINJ: "0x0000000088827d2d103ee2d9A6b781773AE03FfB",
+    SEL_APPROVE: "0x095ea7b3", SEL_ALLOWANCE: "0xdd62ed3e", SEL_BALANCEOF: "0x70a08231",
+    SEL_TIP: "0xfb279ef3", SEL_DEPOSIT: "0xd0e30db0",       // deposit() wraps native INJ -> wINJ
+    TOPIC_TIPPED: "0xce094bbbb6144b00cddac7b300e0482127a8f4d3a1c16ff030afa0512b3059c5",
+    TOKENS: [
+      { symbol: "USDC", address: "0xa00C59fF5a080D2b954d0c75e46E22a0c371235a", decimals: 6,  presets: ["0.1", "0.5", "1", "5"] },
+      { symbol: "USDT", address: "0x88f7F2b685F9692caf8c478f5BADF09eE9B1Cc13", decimals: 6,  presets: ["0.1", "0.5", "1", "5"] },
+      { symbol: "INJ",  address: "0x0000000088827d2d103ee2d9A6b781773AE03FfB", decimals: 18, presets: ["0.01", "0.1", "1"], wrap: true } // token = wINJ
+    ]
+  };
+  function tipTokenBySymbol(sym) { for (var i = 0; i < TIP.TOKENS.length; i++) if (TIP.TOKENS[i].symbol === sym) return TIP.TOKENS[i]; return null; }
+  function tipTokenByAddr(addr) { var a = strip0x(String(addr)).toLowerCase(); for (var i = 0; i < TIP.TOKENS.length; i++) if (strip0x(TIP.TOKENS[i].address).toLowerCase() === a) return TIP.TOKENS[i]; return null; }
+
+  function padAddr(a) { return strip0x(a).toLowerCase().padStart(64, "0"); }
+  function padUint(v) { return BigInt(v).toString(16).padStart(64, "0"); }
+  function encodeApprove(spender, amount) { return TIP.SEL_APPROVE + padAddr(spender) + padUint(amount); }
+  function encodeTipCalldata(index, token, amount) { return TIP.SEL_TIP + padUint(index) + padAddr(token) + padUint(amount); }
+
+  // human decimal string <-> raw BigInt (per token decimals)
+  function toRaw(amountStr, decimals) {
+    var s = String(amountStr == null ? "" : amountStr).trim();
+    if (!s || !/^\d*\.?\d*$/.test(s)) return 0n;
+    var p = s.split("."), whole = p[0] || "0", frac = (p[1] || "");
+    frac = (frac + "0".repeat(decimals)).slice(0, decimals);
+    return BigInt(whole || "0") * (10n ** BigInt(decimals)) + BigInt(frac || "0");
+  }
+  function fromRaw(raw, decimals) {
+    raw = BigInt(raw); var base = 10n ** BigInt(decimals), whole = raw / base, frac = raw % base;
+    if (frac === 0n) return whole.toString();
+    var f = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+    return whole.toString() + "." + f;
+  }
+
+  function erc20Read(sel, token, args) {
+    return rpc("eth_call", [{ to: token, data: sel + args }, "latest"]).then(function (r) { return toBigInt(r || "0x0"); }).catch(function () { return 0n; });
+  }
+  function allowance(token, owner, spender) { return erc20Read(TIP.SEL_ALLOWANCE, token, padAddr(owner) + padAddr(spender)); }
+  function erc20BalanceOf(token, owner) { return erc20Read(TIP.SEL_BALANCEOF, token, padAddr(owner)); }
+  function nativeBalance(owner) { return rpc("eth_getBalance", [owner, "latest"]).then(function (r) { return toBigInt(r || "0x0"); }).catch(function () { return 0n; }); }
+
+  // Tipped: topics [t0, index, from, token]; data = amount
+  function decodeTipped(log) {
+    return {
+      index: toBigInt(log.topics[1]),
+      from: "0x" + strip0x(log.topics[2]).slice(-40),
+      token: "0x" + strip0x(log.topics[3]).slice(-40),
+      amount: toBigInt(log.data),
+      blockNumber: parseInt(log.blockNumber, 16)
+    };
+  }
+
+  // writes
+  function sendApprove(provider, from, token, amount) {
+    return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: token, data: encodeApprove(CONFIG.CONTRACT, amount) }] });
+  }
+  function sendTip(provider, from, index, token, amount) {
+    return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: CONFIG.CONTRACT, data: encodeTipCalldata(index, token, amount) }] });
+  }
+  function sendWrap(provider, from, amount) { // deposit native INJ -> wINJ
+    return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: TIP.WINJ, value: "0x" + BigInt(amount).toString(16), data: TIP.SEL_DEPOSIT }] });
+  }
+
   window.GB = {
     CONFIG: CONFIG,
     encodePostCalldata: encodePostCalldata, encodeDeleteCalldata: encodeDeleteCalldata,
@@ -234,6 +300,10 @@
     rpc: rpc, blockNumber: blockNumber, getEvents: getEvents, blockTime: blockTime, isAdmin: isAdmin,
     sendPost: sendPost, sendDelete: sendDelete,
     TOKEN: TOKEN, bech32Encode: bech32Encode, evmToInj: evmToInj,
-    fetchHolders: fetchHolders, balanceOf: balanceOf, tierOf: tierOf
+    fetchHolders: fetchHolders, balanceOf: balanceOf, tierOf: tierOf,
+    TIP: TIP, tipTokenBySymbol: tipTokenBySymbol, tipTokenByAddr: tipTokenByAddr,
+    encodeApprove: encodeApprove, encodeTipCalldata: encodeTipCalldata,
+    decodeTipped: decodeTipped, allowance: allowance, erc20BalanceOf: erc20BalanceOf, nativeBalance: nativeBalance,
+    sendApprove: sendApprove, sendTip: sendTip, sendWrap: sendWrap, toRaw: toRaw, fromRaw: fromRaw
   };
 })();

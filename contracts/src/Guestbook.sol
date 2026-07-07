@@ -3,13 +3,18 @@ pragma solidity ^0.8.24;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title $HELIXPOINT Guestbook (upgradeable, UUPS)
 /// @notice Anyone can post (permissionless writes). An admin set gates contract upgrades and admin
 ///         management. The deployer is the first admin (set at initialize). Holds no funds.
 /// @dev UUPS proxy pattern via OpenZeppelin. Logic lives here; state lives in the ERC1967 proxy.
 ///      Posts are read off `PostCreated` events (see /guestbook). New state goes ABOVE __gap.
-contract Guestbook is Initializable, UUPSUpgradeable {
+contract Guestbook is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+    using SafeERC20 for IERC20;
+
     struct Post {
         address author;
         uint64 timestamp;
@@ -20,11 +25,16 @@ contract Guestbook is Initializable, UUPSUpgradeable {
     mapping(address => bool) public isAdmin;
     uint256 public adminCount;
     mapping(uint256 => bool) public deleted; // index => hidden by an admin
+    // ---- V2 (tipping) state: APPEND ONLY, above __gap. OZ v5 keeps ReentrancyGuard/UUPS/Initializable
+    //      in ERC-7201 namespaced storage, so this is the only new sequential slot. ----
+    mapping(address => bool) public tipTokenAllowed; // admin allowlist of tip tokens (USDC/USDT/wINJ)
 
     event PostCreated(address indexed author, uint256 indexed index, string message);
     event PostDeleted(uint256 indexed index, address indexed by);
     event AdminAdded(address indexed admin, address indexed by);
     event AdminRemoved(address indexed admin, address indexed by);
+    event Tipped(uint256 indexed index, address indexed from, address indexed token, uint256 amount);
+    event TipTokenSet(address indexed token, bool allowed);
 
     error EmptyMessage();
     error MessageTooLong();
@@ -35,6 +45,8 @@ contract Guestbook is Initializable, UUPSUpgradeable {
     error LastAdmin();
     error NoSuchPost();
     error AlreadyDeleted();
+    error TipTokenNotAllowed();
+    error ZeroAmount();
 
     modifier onlyAdmin() {
         if (!isAdmin[msg.sender]) revert NotAdmin();
@@ -93,9 +105,41 @@ contract Guestbook is Initializable, UUPSUpgradeable {
         emit AdminRemoved(account, msg.sender);
     }
 
+    // ---- tipping (permissionless; non-custodial; totals aggregated off-chain from Tipped events) ----
+    /// @notice Tip a post's author in an allowlisted ERC20 (USDC/USDT/wINJ). Pulls `amount` from the
+    ///         caller straight to the author — the contract never holds funds.
+    function tip(uint256 index, address token, uint256 amount) external nonReentrant {
+        if (index >= _posts.length) revert NoSuchPost();
+        if (deleted[index]) revert AlreadyDeleted(); // no tipping hidden posts
+        if (amount == 0) revert ZeroAmount();
+        if (!tipTokenAllowed[token]) revert TipTokenNotAllowed();
+        address author = _posts[index].author;
+        IERC20(token).safeTransferFrom(msg.sender, author, amount); // effects are event-only; interaction last
+        emit Tipped(index, msg.sender, token, amount);
+    }
+
+    /// @notice Admin-only: allow/disallow a token for tipping.
+    function setTipToken(address token, bool allowed) external onlyAdmin {
+        if (token == address(0)) revert ZeroAddress();
+        tipTokenAllowed[token] = allowed;
+        emit TipTokenSet(token, allowed);
+    }
+
+    /// @notice One-time V2 init, run ATOMICALLY inside upgradeToAndCall by an admin. onlyAdmin +
+    ///         reinitializer(2) close any front-run window on the token allowlist.
+    function initializeV2(address[] calldata tokens) external reinitializer(2) onlyAdmin {
+        __ReentrancyGuard_init();
+        for (uint256 i; i < tokens.length; i++) {
+            if (tokens[i] == address(0)) revert ZeroAddress();
+            tipTokenAllowed[tokens[i]] = true;
+            emit TipTokenSet(tokens[i], true);
+        }
+    }
+
     // ---- upgrade authorization: admins only ----
     function _authorizeUpgrade(address) internal override onlyAdmin {}
 
     /// @dev Storage gap so future versions can add state without clobbering the proxy layout.
-    uint256[46] private __gap;
+    ///      Shrunk 46 -> 45 when `tipTokenAllowed` was appended in V2.
+    uint256[45] private __gap;
 }
