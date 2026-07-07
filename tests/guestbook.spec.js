@@ -2,69 +2,61 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
-const TOPIC = '0x12a6d6e360de92ee96444e397580fa39ca65f27c25bd78a4bad6278011334fac';        // PostCreated
-const TOPIC_DEL = '0x1da4a15b15417b54b8b3bea2ca87cfc4c94f0fee7d86702d0dab9e2906e7a7d3';   // PostDeleted
-// Read chain.js so the mocked RPC host + block range always match the config (survives redeploys / mainnet cutover).
-const CHAIN_SRC = fs.readFileSync(path.join(__dirname, '..', 'site', 'guestbook', 'chain.js'), 'utf8');
-const RPC = '**' + new URL(CHAIN_SRC.match(/rpc:\s*"([^"]+)"/)[1]).host + '**';
-const BASE = parseInt(CHAIN_SRC.match(/DEPLOY_BLOCK:\s*(\d+)/)[1], 10);
-const LATEST = BASE + 2000;      // small range -> one getLogs chunk
+// The guestbook reads posts+tips from contract STATE via eth_call (count / getPostsBlob / getTips),
+// not a log scan. These mocks serve those calls; helpers below encode returns exactly as the contract would.
+const SRC = fs.readFileSync(path.join(__dirname, '..', 'site', 'guestbook', 'chain.js'), 'utf8');
+const RPC = '**' + new URL(SRC.match(/rpc:\s*"([^"]+)"/)[1]).host + '**';
+const TIP_ADDRS = (SRC.match(/address:\s*"(0x[0-9a-fA-F]{40})"/g) || []).map((s) => s.match(/0x[0-9a-fA-F]{40}/)[0]).slice(0, 3);
+const ACCT = '0xAbC0000000000000000000000000000000001234';
 
-// Build a PostCreated log the way the contract emits it, so chain.js decodes it for real.
-function makeLog(from, index, message, block) {
-  const author = '0x' + '0'.repeat(24) + from.slice(2).toLowerCase();
-  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
-  const bytes = Buffer.from(message, 'utf8');
-  const offset = (32).toString(16).padStart(64, '0');
-  const len = bytes.length.toString(16).padStart(64, '0');
-  let data = bytes.toString('hex');
-  while (data.length % 64 !== 0) data += '0';
-  return { topics: [TOPIC, author, idx], data: '0x' + offset + len + data, blockNumber: '0x' + block.toString(16) };
+const hx = (v) => BigInt(v).toString(16).padStart(64, '0');
+function postsBlobRet(posts) {                       // getPostsBlob(bytes) return
+  let blob = '';
+  for (const p of posts) {
+    const mb = Buffer.from(p.msg, 'utf8');
+    blob += hx(p.index) + '0'.repeat(24) + p.addr.slice(2).toLowerCase() + hx(p.ts || 0) + hx(p.deleted ? 1 : 0) + hx(mb.length) + mb.toString('hex');
+  }
+  const len = blob.length / 2; let data = blob; while ((data.length / 2) % 32) data += '00';
+  return '0x' + hx(32) + hx(len) + data;
 }
-function makeDeleteLog(index, block) {
-  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
-  return { topics: [TOPIC_DEL, idx, '0x' + '0'.repeat(64)], data: '0x', blockNumber: '0x' + block.toString(16) };
+const uintArrRet = (vals) => '0x' + hx(32) + hx(vals.length) + vals.map(hx).join('');
+function tipsFlat(state) {                            // getTips(uint256[]) flat, index-major token-minor
+  const out = [];
+  for (let i = 0; i < state.posts.length; i++) for (const t of TIP_ADDRS) out.push((state.tips[i] && state.tips[i][t.toLowerCase()]) || 0n);
+  return out;
 }
-
-// Mock the JSON-RPC endpoint chain.js reads from. `state` lets a test mutate logs/block mid-flow.
-async function routeChain(page, state) {
-  state = Object.assign({ logs: [], latest: LATEST, admin: false }, state);
-  page._chain = state;
+async function routeState(page, state) {
+  state = Object.assign({ posts: [], tips: {}, admin: false }, state);
+  page._state = state;
   await page.route(RPC, async (route) => {
     const req = JSON.parse(route.request().postData() || '{}');
-    let result;
-    if (req.method === 'eth_blockNumber') result = '0x' + state.latest.toString(16);
-    else if (req.method === 'eth_getLogs') result = state.logs;
-    else if (req.method === 'eth_getBlockByNumber') result = { timestamp: '0x' + Math.floor(Date.now() / 1000).toString(16) };
-    else if (req.method === 'eth_call') result = '0x' + (state.admin ? '1' : '0').padStart(64, '0'); // isAdmin(address)
-    else if (req.method === 'eth_getTransactionReceipt') { if (state.onReceipt) state.onReceipt(); result = { status: '0x1', blockNumber: '0x1' }; }
-    else result = null;
+    let result = '0x' + hx(0);
+    if (req.method === 'eth_call') {
+      const sel = (req.params[0].data || '').slice(0, 10);
+      if (sel === '0x06661abd') result = '0x' + hx(state.posts.length);   // count()
+      else if (sel === '0xef48eaa4') result = postsBlobRet(state.posts);  // getPostsBlob
+      else if (sel === '0x34472457') result = uintArrRet(tipsFlat(state));// getTips
+      else if (sel === '0x24d7806c') result = '0x' + hx(state.admin ? 1 : 0); // isAdmin
+    }
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
   });
   return state;
 }
+const post = (index, addr, msg, deleted) => ({ index, addr, ts: 1751800000 + index, deleted: !!deleted, msg });
 
-// An injected wallet already on Injective EVM testnet (0x59f), recording tx sends.
-const WALLET = `
-(() => {
-  const cbs = {};
-  window.__calls = [];
-  const p = {
-    isMetaMask: true,
+const WALLET = `(() => {
+  const cbs = {}; window.__calls = [];
+  const p = { isMetaMask: true,
     request: async ({ method }) => {
       window.__calls.push(method);
-      if (method === 'eth_requestAccounts') return ['0xAbC0000000000000000000000000000000001234'];
-      if (method === 'eth_chainId') return '0x59f';
-      if (method === 'eth_sendTransaction') return '0xdeadbeef';
+      if (method === 'eth_requestAccounts') return ['${ACCT}'];
+      if (method === 'eth_chainId') return '0x6f0';
+      if (method === 'eth_sendTransaction') return '0x' + 'de'.repeat(32);
       return null;
-    },
-    on(ev, cb) { cbs[ev] = cb; }
-  };
+    }, on(ev, cb) { cbs[ev] = cb; } };
   window.__emitAccounts = (a) => cbs.accountsChanged && cbs.accountsChanged(a);
   window.ethereum = p;
-})();
-`;
-
+})();`;
 async function connect(page) {
   await page.addInitScript(WALLET);
   await page.goto('/guestbook/');
@@ -73,17 +65,17 @@ async function connect(page) {
   await expect(page.locator('#account')).toBeVisible();
 }
 
-test('loads posts from PostCreated events', async ({ page }) => {
-  await routeChain(page, { logs: [makeLog('0x1111111111111111111111111111111111111111', 0, 'gm on chain', BASE + 10)] });
+test('loads posts from contract state', async ({ page }) => {
+  await routeState(page, { posts: [post(0, '0x1111111111111111111111111111111111111111', 'gm on chain')] });
   await page.goto('/guestbook/');
   await expect(page.locator('#posts .post')).toHaveCount(1);
   await expect(page.locator('#posts .post-body').first()).toHaveText('gm on chain');
   await expect(page.locator('#posts .post-addr').first()).toHaveText('0x1111…1111');
 });
 
-test('an on-chain message with markup renders as inert text', async ({ page }) => {
+test('a stored message with markup renders as inert text', async ({ page }) => {
   const payload = '<img src=x onerror="window.__xss=1"><script>window.__xss=2<\/script>';
-  await routeChain(page, { logs: [makeLog('0x2222222222222222222222222222222222222222', 0, payload, BASE + 10)] });
+  await routeState(page, { posts: [post(0, '0x2222222222222222222222222222222222222222', payload)] });
   await page.goto('/guestbook/');
   await expect(page.locator('#posts .post')).toHaveCount(1);
   expect(await page.locator('#posts img').count()).toBe(0);
@@ -93,15 +85,15 @@ test('an on-chain message with markup renders as inert text', async ({ page }) =
 });
 
 test('empty guestbook shows the empty state', async ({ page }) => {
-  await routeChain(page, { logs: [] });
+  await routeState(page, { posts: [] });
   await page.goto('/guestbook/');
   await expect(page.locator('#empty')).toBeVisible();
 });
 
 test('load more pages 10 at a time, then shows the end marker', async ({ page }) => {
-  const logs = [];
-  for (let i = 0; i < 25; i++) logs.push(makeLog('0x3333333333333333333333333333333333333333', i, 'post #' + i, BASE + 10 + i));
-  await routeChain(page, { logs });
+  const posts = [];
+  for (let i = 0; i < 25; i++) posts.push(post(i, '0x3333333333333333333333333333333333333333', 'post #' + i));
+  await routeState(page, { posts });
   await page.goto('/guestbook/');
   await expect(page.locator('#posts .post')).toHaveCount(10);
   await page.click('#loadmore');
@@ -113,28 +105,26 @@ test('load more pages 10 at a time, then shows the end marker', async ({ page })
 });
 
 test('compose is gated until a wallet connects', async ({ page }) => {
-  await routeChain(page, { logs: [] });
+  await routeState(page, { posts: [] });
   await page.goto('/guestbook/');
   await expect(page.locator('#msg')).toBeDisabled();
   await expect(page.locator('#sign-btn')).toBeDisabled();
 });
 
-test('signing sends a tx and the post is confirmed once it appears via events', async ({ page }) => {
-  const state = await routeChain(page, { logs: [], latest: LATEST });
+test('signing sends a tx and the post is confirmed once state shows it', async ({ page }) => {
+  const state = await routeState(page, { posts: [] });
   await connect(page);
   await page.fill('#msg', 'hello chain');
-  await page.click('#sign-btn'); // sends the tx; the page now polls events to confirm
-  // reveal the post on chain — the confirmation poll picks it up (no reliance on tx-by-hash receipt)
-  state.latest = LATEST + 1;
-  state.logs = [makeLog('0xAbC0000000000000000000000000000000001234', 0, 'hello chain', LATEST + 1)];
+  await page.click('#sign-btn');                       // sends the tx; page polls state to confirm
+  state.posts.push(post(0, ACCT, 'hello chain'));      // reveal the post on-chain
   await expect(page.locator('#posts .post-body').first()).toHaveText('hello chain');
   expect(await page.evaluate(() => window.__calls)).toContain('eth_sendTransaction');
-  await expect(page.locator('#msg')).toHaveValue('');       // textarea cleared on success
-  await expect(page.locator('#sign-btn')).toHaveText('Sign'); // button reset (no longer "Confirming…")
+  await expect(page.locator('#msg')).toHaveValue('');
+  await expect(page.locator('#sign-btn')).toHaveText('Sign');
 });
 
 test('switching the wallet account updates the UI; locking disconnects', async ({ page }) => {
-  await routeChain(page, { logs: [] });
+  await routeState(page, { posts: [] });
   await connect(page);
   await expect(page.locator('#account')).toHaveText('0xAbC0…1234');
   await page.evaluate(() => window.__emitAccounts(['0xBBB0000000000000000000000000000000000002']));
@@ -144,11 +134,10 @@ test('switching the wallet account updates the UI; locking disconnects', async (
   await expect(page.locator('#msg')).toBeDisabled();
 });
 
-test('a post flagged by PostDeleted is hidden', async ({ page }) => {
-  await routeChain(page, { logs: [
-    makeLog('0x1111111111111111111111111111111111111111', 0, 'keep me', BASE + 10),
-    makeLog('0x2222222222222222222222222222222222222222', 1, 'delete me', BASE + 11),
-    makeDeleteLog(1, BASE + 12),
+test('a post flagged deleted is hidden', async ({ page }) => {
+  await routeState(page, { posts: [
+    post(0, '0x1111111111111111111111111111111111111111', 'keep me'),
+    post(1, '0x2222222222222222222222222222222222222222', 'delete me', true),
   ] });
   await page.goto('/guestbook/');
   await expect(page.locator('#posts .post')).toHaveCount(1);
@@ -156,19 +145,18 @@ test('a post flagged by PostDeleted is hidden', async ({ page }) => {
 });
 
 test('a non-admin sees no delete controls', async ({ page }) => {
-  await routeChain(page, { admin: false, logs: [makeLog('0x1111111111111111111111111111111111111111', 0, 'hi', BASE + 10)] });
+  await routeState(page, { admin: false, posts: [post(0, '0x1111111111111111111111111111111111111111', 'hi')] });
   await connect(page);
   await expect(page.locator('#posts .post')).toHaveCount(1);
   await expect(page.locator('.post-del')).toHaveCount(0);
 });
 
 test('an admin sees delete controls and can delete a post', async ({ page }) => {
-  const state = await routeChain(page, { admin: true, logs: [makeLog('0x1111111111111111111111111111111111111111', 0, 'bye', BASE + 10)] });
+  const state = await routeState(page, { admin: true, posts: [post(0, '0x1111111111111111111111111111111111111111', 'bye')] });
   await connect(page);
-  await expect(page.locator('.post-del')).toHaveCount(1);   // admin sees the delete control
-  await page.click('.post-del');                            // sends deletePost tx
-  state.latest = LATEST + 1;                                 // reveal the PostDeleted event for the confirm poll
-  state.logs = state.logs.concat([makeDeleteLog(0, LATEST + 1)]);
-  await expect(page.locator('#posts .post')).toHaveCount(0); // hidden once the delete confirms
+  await expect(page.locator('.post-del')).toHaveCount(1);
+  await page.click('.post-del');                        // sends deletePost tx
+  state.posts[0].deleted = true;                        // reveal the delete on-chain
+  await expect(page.locator('#posts .post')).toHaveCount(0);
   expect(await page.evaluate(() => window.__calls)).toContain('eth_sendTransaction');
 });

@@ -23,25 +23,30 @@ function to5(bytes){let acc=0,bits=0;const o=[];for(const b of bytes){acc=(acc<<
 function evmToInj(addr){const h=addr.replace(/^0x/,'').toLowerCase();const bytes=[];for(let i=0;i<20;i++)bytes.push(parseInt(h.substr(i*2,2),16));
   const d=to5(bytes),c=d.concat(checksum('inj',d));return 'inj1'+c.map(x=>B32[x]).join('');}
 
-function makeLog(from, index, message, block) {
-  const author = '0x' + '0'.repeat(24) + from.slice(2).toLowerCase();
-  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
-  const bytes = Buffer.from(message, 'utf8');
-  const offset = (32).toString(16).padStart(64, '0');
-  const len = bytes.length.toString(16).padStart(64, '0');
-  let data = bytes.toString('hex'); while (data.length % 64 !== 0) data += '0';
-  return { topics: [TOPIC, author, idx], data: '0x' + offset + len + data, blockNumber: '0x' + block.toString(16) };
+const hx = (v) => BigInt(v).toString(16).padStart(64, '0');
+// posts now come from contract state (getPostsBlob), not events. Name kept so callers are unchanged.
+function makeLog(from, index, message) { return { index, addr: from, ts: 1751800000 + index, deleted: false, msg: message }; }
+function postsBlobRet(posts) {
+  let blob = '';
+  for (const p of posts) {
+    const mb = Buffer.from(p.msg, 'utf8');
+    blob += hx(p.index) + '0'.repeat(24) + p.addr.slice(2).toLowerCase() + hx(p.ts || 0) + hx(p.deleted ? 1 : 0) + hx(mb.length) + mb.toString('hex');
+  }
+  const len = blob.length / 2; let data = blob; while ((data.length / 2) % 32) data += '00';
+  return '0x' + hx(32) + hx(len) + data;
 }
 const raw = (whole) => (BigInt(whole) * (10n ** 18n)).toString();   // whole tokens -> raw 18dp string
 
-async function routeRpc(page, logs) {
+async function routeRpc(page, posts) {
   await page.route(RPC, async (r) => {
     const req = JSON.parse(r.request().postData() || '{}');
-    let result = null;
-    if (req.method === 'eth_blockNumber') result = '0x' + LATEST.toString(16);
-    else if (req.method === 'eth_getLogs') result = logs;
-    else if (req.method === 'eth_getBlockByNumber') result = { timestamp: '0x' + Math.floor(Date.now()/1000).toString(16) };
-    else if (req.method === 'eth_call') result = '0x' + '0'.padStart(64, '0');
+    let result = '0x' + hx(0);
+    if (req.method === 'eth_call') {
+      const sel = (req.params[0].data || '').slice(0, 10);
+      if (sel === '0x06661abd') result = '0x' + hx(posts.length);       // count
+      else if (sel === '0xef48eaa4') result = postsBlobRet(posts);      // getPostsBlob
+      else if (sel === '0x34472457') result = '0x' + hx(32) + hx(0);    // getTips (none in badge tests)
+    }
     await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
   });
 }

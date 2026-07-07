@@ -9,22 +9,27 @@ const BASE = parseInt(SRC.match(/DEPLOY_BLOCK:\s*(\d+)/)[1], 10);
 const LCD  = 'https://' + new URL(SRC.match(/LCD:\s*\[[^\]]*?"([^"]+)"/)[1]).host + '/**';
 const A = '0x1111111111111111111111111111111111111111';
 
-function makeLog(from, index, message, block) {
-  const author = '0x' + '0'.repeat(24) + from.slice(2).toLowerCase();
-  const idx = '0x' + BigInt(index).toString(16).padStart(64, '0');
-  const bytes = Buffer.from(message, 'utf8');
-  const offset = (32).toString(16).padStart(64, '0');
-  const len = bytes.length.toString(16).padStart(64, '0');
-  let data = bytes.toString('hex'); while (data.length % 64 !== 0) data += '0';
-  return { topics: [TOPIC, author, idx], data: '0x' + offset + len + data, blockNumber: '0x' + block.toString(16) };
+const hx = (v) => BigInt(v).toString(16).padStart(64, '0');
+// posts come from contract state now (getPostsBlob). Name kept so the test bodies read the same.
+function makeLog(from, index, message) { return { index, addr: from, ts: 1751800000 + index, deleted: false, msg: message }; }
+function postsBlobRet(posts) {
+  let blob = '';
+  for (const p of posts) {
+    const mb = Buffer.from(p.msg, 'utf8');
+    blob += hx(p.index) + '0'.repeat(24) + p.addr.slice(2).toLowerCase() + hx(p.ts || 0) + hx(p.deleted ? 1 : 0) + hx(mb.length) + mb.toString('hex');
+  }
+  const len = blob.length / 2; let data = blob; while ((data.length / 2) % 32) data += '00';
+  return '0x' + hx(32) + hx(len) + data;
 }
-async function route(page, logs) {
+async function route(page, posts) {
   await page.route(RPC, async (r) => {
-    const req = JSON.parse(r.request().postData() || '{}'); let result = null;
-    if (req.method === 'eth_blockNumber') result = '0x' + (BASE + 2000).toString(16);
-    else if (req.method === 'eth_getLogs') result = logs;
-    else if (req.method === 'eth_getBlockByNumber') result = { timestamp: '0x' + Math.floor(Date.now()/1000).toString(16) };
-    else if (req.method === 'eth_call') result = '0x' + '0'.padStart(64, '0');
+    const req = JSON.parse(r.request().postData() || '{}'); let result = '0x' + hx(0);
+    if (req.method === 'eth_call') {
+      const sel = (req.params[0].data || '').slice(0, 10);
+      if (sel === '0x06661abd') result = '0x' + hx(posts.length);
+      else if (sel === '0xef48eaa4') result = postsBlobRet(posts);
+      else if (sel === '0x34472457') result = '0x' + hx(32) + hx(0);
+    }
     await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: req.id, result }) });
   });
   await page.route(LCD, async (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ denom_owners: [], pagination: { next_key: null } }) }));
