@@ -53,6 +53,17 @@ contract ReentrantToken {
     }
 }
 
+/// Author contract with no receive/fallback -> rejects native INJ (tipNative must revert).
+contract RejectAuthor { }
+
+/// Author contract that re-enters tipNative when it receives INJ -> must be stopped by nonReentrant.
+contract ReentrantAuthor {
+    Guestbook public gb;
+    uint256 public idx;
+    function arm(Guestbook _gb, uint256 _idx) external { gb = _gb; idx = _idx; }
+    receive() external payable { gb.tipNative(idx); } // re-enter (value 0) -> guard reverts before body
+}
+
 /// Faithful copy of the PRE-tip storage layout, to prove the real mainnet old->new upgrade preserves state.
 contract GuestbookLegacy is Initializable, UUPSUpgradeable {
     struct Post { address author; uint64 timestamp; string message; }
@@ -362,6 +373,67 @@ contract GuestbookTest is Test {
         vm.prank(alice); tok.approve(address(g), 50);
         vm.prank(alice); g.tip(0, address(tok), 50); // post 0 author = bob
         assertEq(tok.balanceOf(bob), 50);
+    }
+
+    // ---- native tipping (V4) ----
+    function test_tipNative_forwardsToAuthor_andEmits() public {
+        vm.prank(bob); gb.post("tip me");
+        vm.deal(alice, 1 ether);
+        uint256 before = bob.balance;
+        vm.expectEmit(true, true, true, true);
+        emit Tipped(0, alice, gb.WRAPPED_NATIVE(), 0.5 ether);
+        vm.prank(alice); gb.tipNative{value: 0.5 ether}(0);
+        assertEq(bob.balance - before, 0.5 ether);          // author received native INJ
+        assertEq(address(gb).balance, 0);                    // non-custodial
+        assertEq(gb.tipTotal(0, gb.WRAPPED_NATIVE()), 0.5 ether);
+    }
+
+    function test_tipNative_accumulates_andGetTips() public {
+        vm.prank(bob); gb.post("p");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice); gb.tipNative{value: 0.3 ether}(0);
+        vm.prank(alice); gb.tipNative{value: 0.2 ether}(0);
+        assertEq(gb.tipTotal(0, gb.WRAPPED_NATIVE()), 0.5 ether);
+        uint256[] memory idx = new uint256[](1); idx[0] = 0;
+        address[] memory toks = new address[](1); toks[0] = gb.WRAPPED_NATIVE();
+        assertEq(gb.getTips(idx, toks)[0], 0.5 ether);
+    }
+
+    function test_tipNative_zero_reverts() public {
+        vm.prank(bob); gb.post("x");
+        vm.prank(alice);
+        vm.expectRevert(Guestbook.ZeroAmount.selector);
+        gb.tipNative{value: 0}(0);
+    }
+
+    function test_tipNative_deleted_reverts() public {
+        vm.prank(bob); gb.post("x"); gb.deletePost(0);
+        vm.deal(alice, 1 ether); vm.prank(alice);
+        vm.expectRevert(Guestbook.AlreadyDeleted.selector);
+        gb.tipNative{value: 0.1 ether}(0);
+    }
+
+    function test_tipNative_badIndex_reverts() public {
+        vm.deal(alice, 1 ether); vm.prank(alice);
+        vm.expectRevert(Guestbook.NoSuchPost.selector);
+        gb.tipNative{value: 0.1 ether}(0);
+    }
+
+    function test_tipNative_rejectingAuthor_reverts() public {
+        RejectAuthor r = new RejectAuthor();
+        vm.prank(address(r)); gb.post("no INJ for me");     // author rejects native
+        vm.deal(alice, 1 ether); vm.prank(alice);
+        vm.expectRevert(Guestbook.NativeTransferFailed.selector);
+        gb.tipNative{value: 0.1 ether}(0);
+    }
+
+    function test_tipNative_reentrantAuthor_blocked() public {
+        ReentrantAuthor r = new ReentrantAuthor();
+        vm.prank(address(r)); gb.post("evil");
+        r.arm(gb, 0);
+        vm.deal(alice, 1 ether); vm.prank(alice);
+        vm.expectRevert();                                   // re-entrant tipNative -> whole tx reverts
+        gb.tipNative{value: 0.1 ether}(0);
     }
 
     // ---- V3 state reads ----

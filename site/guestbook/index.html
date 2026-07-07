@@ -703,7 +703,7 @@
   var tipOverlay = $("tip-overlay"), tipTokensEl = $("tip-tokens"), tipPresetsEl = $("tip-presets"),
       tipAmountEl = $("tip-amount"), tipBalEl = $("tip-bal"), tipStatusEl = $("tip-status"), tipGoEl = $("tip-go"),
       tipState = null, tipBusy = false, tipLastFocus = null;
-  function tokLabel(t) { return t.wrap ? "INJ" : t.symbol; }
+  function tokLabel(t) { return t.symbol; }   // INJ token's symbol is already "INJ"
 
   // fill a post's totals span from the aggregated Tipped events (empty when no tips)
   function renderTotals(span, index) {
@@ -747,7 +747,7 @@
   }
   function refreshTipBalance() {
     var t = tipState.token; tipBalEl.textContent = "balance: …";
-    var read = t.wrap ? GB.nativeBalance(account) : GB.erc20BalanceOf(t.address, account);
+    var read = t.native ? GB.nativeBalance(account) : GB.erc20BalanceOf(t.address, account);
     read.then(function (bal) {
       if (!tipState || tipState.token !== t) return;
       tipBalEl.textContent = "balance: " + GB.fromRaw(bal, t.decimals) + " " + tokLabel(t) + "  ";
@@ -796,27 +796,23 @@
     tipBusy = true; tipGoEl.disabled = true;
     try {
       await ensureInjective();
-      if (t.wrap) {                                     // INJ: wrap native -> wINJ if short
-        var winj = await GB.erc20BalanceOf(tokenAddr, account);
-        if (winj < raw) {
-          var need = raw - winj, injBal = await GB.nativeBalance(account);
-          if (injBal < need) { tipStatusEl.textContent = "not enough INJ (need " + GB.fromRaw(need, 18) + ")"; tipBusy = false; updateTipGo(); return; }
-          tipStatusEl.textContent = "Wrapping INJ → wINJ — check your wallet…";
-          await GB.sendWrap(activeProvider, account, need);
-          await pollUntil(function () { return GB.erc20BalanceOf(tokenAddr, account).then(function (b) { return b >= raw; }); }, 90000);
-        }
-      } else {
+      if (t.native) {                                   // INJ: one native tx, no wrap/approve
+        var injBal = await GB.nativeBalance(account);
+        if (injBal < raw) { tipStatusEl.textContent = "not enough INJ (balance " + GB.fromRaw(injBal, 18) + ")"; tipBusy = false; updateTipGo(); return; }
+        tipStatusEl.textContent = "Sending tip — check your wallet…";
+        await GB.sendTipNative(activeProvider, account, index, raw);
+      } else {                                          // USDC/USDT: approve (if needed) -> tip
         var bal = await GB.erc20BalanceOf(tokenAddr, account);
         if (bal < raw) { tipStatusEl.textContent = "not enough " + t.symbol + " (balance " + GB.fromRaw(bal, t.decimals) + ")"; tipBusy = false; updateTipGo(); return; }
+        var allo = await GB.allowance(tokenAddr, account, GB.CONFIG.CONTRACT);   // exact-amount approve
+        if (allo < raw) {
+          tipStatusEl.textContent = "Approve " + t.symbol + " — check your wallet…";
+          await GB.sendApprove(activeProvider, account, tokenAddr, raw);
+          await pollUntil(function () { return GB.allowance(tokenAddr, account, GB.CONFIG.CONTRACT).then(function (a) { return a >= raw; }); }, 90000);
+        }
+        tipStatusEl.textContent = "Sending tip — check your wallet…";
+        await GB.sendTip(activeProvider, account, index, tokenAddr, raw);
       }
-      var allo = await GB.allowance(tokenAddr, account, GB.CONFIG.CONTRACT);   // exact-amount approve
-      if (allo < raw) {
-        tipStatusEl.textContent = "Approve " + (t.wrap ? "wINJ" : t.symbol) + " — check your wallet…";
-        await GB.sendApprove(activeProvider, account, tokenAddr, raw);
-        await pollUntil(function () { return GB.allowance(tokenAddr, account, GB.CONFIG.CONTRACT).then(function (a) { return a >= raw; }); }, 90000);
-      }
-      tipStatusEl.textContent = "Sending tip — check your wallet…";
-      await GB.sendTip(activeProvider, account, index, tokenAddr, raw);
       tipStatusEl.textContent = "Confirming…";
       var landed = await waitForTip(index, tokenAddr, 90000);
       closeTip();

@@ -233,12 +233,12 @@
   var TIP = {
     WINJ: "0x0000000088827d2d103ee2d9A6b781773AE03FfB",
     SEL_APPROVE: "0x095ea7b3", SEL_ALLOWANCE: "0xdd62ed3e", SEL_BALANCEOF: "0x70a08231",
-    SEL_TIP: "0xfb279ef3", SEL_DEPOSIT: "0xd0e30db0",       // deposit() wraps native INJ -> wINJ
+    SEL_TIP: "0xfb279ef3", SEL_TIPNATIVE: "0xe2252384",     // tip(index,token,amt) | tipNative(index) payable
     TOPIC_TIPPED: "0xce094bbbb6144b00cddac7b300e0482127a8f4d3a1c16ff030afa0512b3059c5",
     TOKENS: [
       { symbol: "USDC", address: "0xa00C59fF5a080D2b954d0c75e46E22a0c371235a", decimals: 6,  presets: ["0.1", "0.5", "1", "5"] },
       { symbol: "USDT", address: "0x88f7F2b685F9692caf8c478f5BADF09eE9B1Cc13", decimals: 6,  presets: ["0.1", "0.5", "1", "5"] },
-      { symbol: "INJ",  address: "0x0000000088827d2d103ee2d9A6b781773AE03FfB", decimals: 18, presets: ["0.01", "0.1", "1"], wrap: true } // token = wINJ
+      { symbol: "INJ",  address: "0x0000000088827d2d103ee2d9A6b781773AE03FfB", decimals: 18, presets: ["0.01", "0.1", "1"], native: true } // native INJ; totals under the wINJ address
     ]
   };
   function tipTokenBySymbol(sym) { for (var i = 0; i < TIP.TOKENS.length; i++) if (TIP.TOKENS[i].symbol === sym) return TIP.TOKENS[i]; return null; }
@@ -289,8 +289,9 @@
   function sendTip(provider, from, index, token, amount) {
     return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: CONFIG.CONTRACT, data: encodeTipCalldata(index, token, amount) }] });
   }
-  function sendWrap(provider, from, amount) { // deposit native INJ -> wINJ
-    return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: TIP.WINJ, value: "0x" + BigInt(amount).toString(16), data: TIP.SEL_DEPOSIT }] });
+  function encodeTipNative(index) { return TIP.SEL_TIPNATIVE + padUint(index); }
+  function sendTipNative(provider, from, index, value) { // native INJ tip: 1 tx, author receives native
+    return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: CONFIG.CONTRACT, value: "0x" + BigInt(value).toString(16), data: encodeTipNative(index) }] });
   }
 
   // ---- state reads via eth_call (replaces scanning the whole event history) ----
@@ -344,7 +345,7 @@
     TIP: TIP, tipTokenBySymbol: tipTokenBySymbol, tipTokenByAddr: tipTokenByAddr,
     encodeApprove: encodeApprove, encodeTipCalldata: encodeTipCalldata,
     decodeTipped: decodeTipped, allowance: allowance, erc20BalanceOf: erc20BalanceOf, nativeBalance: nativeBalance,
-    sendApprove: sendApprove, sendTip: sendTip, sendWrap: sendWrap, toRaw: toRaw, fromRaw: fromRaw,
+    sendApprove: sendApprove, sendTip: sendTip, encodeTipNative: encodeTipNative, sendTipNative: sendTipNative, toRaw: toRaw, fromRaw: fromRaw,
     count: count, getPosts: getPosts, getTips: getTips,
     decodePostsBlob: decodePostsBlob, decodeUintArray: decodeUintArray, encodeGetTipsCall: encodeGetTipsCall
   };
