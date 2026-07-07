@@ -44,12 +44,14 @@ async function routeState(page, state) {
 }
 const post = (index, addr, msg, deleted) => ({ index, addr, ts: 1751800000 + index, deleted: !!deleted, msg });
 
-const WALLET = `(() => {
+// authorized=true → eth_accounts returns the account (wallet still authorizes this dApp), enabling a silent reconnect on reload.
+const walletScript = (authorized) => `(() => {
   const cbs = {}; window.__calls = [];
   const p = { isMetaMask: true,
     request: async ({ method }) => {
       window.__calls.push(method);
       if (method === 'eth_requestAccounts') return ['${ACCT}'];
+      if (method === 'eth_accounts') return ${authorized ? `['${ACCT}']` : '[]'};
       if (method === 'eth_chainId') return '0x6f0';
       if (method === 'eth_sendTransaction') return '0x' + 'de'.repeat(32);
       return null;
@@ -57,6 +59,7 @@ const WALLET = `(() => {
   window.__emitAccounts = (a) => cbs.accountsChanged && cbs.accountsChanged(a);
   window.ethereum = p;
 })();`;
+const WALLET = walletScript(true);
 async function connect(page) {
   await page.addInitScript(WALLET);
   await page.goto('/guestbook/');
@@ -141,6 +144,44 @@ test('switching the wallet account updates the UI; locking disconnects', async (
   await page.evaluate(() => window.__emitAccounts([]));
   await expect(page.locator('#connect-btn')).toBeVisible();
   await expect(page.locator('#msg')).toBeDisabled();
+});
+
+test('wallet connection persists across a reload (silent reconnect, no popup)', async ({ page }) => {
+  await routeState(page, { posts: [] });
+  await connect(page);
+  await expect(page.locator('#account')).toHaveText('0xAbC0…1234');
+  await page.reload();
+  await expect(page.locator('#account')).toBeVisible();                 // reconnected without clicking
+  await expect(page.locator('#account')).toHaveText('0xAbC0…1234');
+  await expect(page.locator('#connect-btn')).toBeHidden();
+  await expect(page.locator('#wallet-overlay')).toBeHidden();           // no wallet picker shown
+  await expect(page.locator('#msg')).toBeEnabled();                     // compose is unlocked again
+  const calls = await page.evaluate(() => window.__calls);
+  expect(calls).toContain('eth_accounts');                             // used the silent path...
+  expect(calls).not.toContain('eth_requestAccounts');                  // ...not the popup path
+});
+
+test('an explicit disconnect is remembered across a reload (no auto-reconnect)', async ({ page }) => {
+  await routeState(page, { posts: [] });
+  await connect(page);
+  await page.click('#disconnect-btn');
+  await expect(page.locator('#connect-btn')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#connect-btn')).toBeVisible();
+  await expect(page.locator('#account')).toBeHidden();
+  expect(await page.evaluate(() => window.__calls)).not.toContain('eth_accounts'); // flag cleared → no reconnect attempt
+});
+
+test('a revoked wallet does not silently reconnect (stale flag cleared)', async ({ page }) => {
+  await routeState(page, { posts: [] });
+  await page.addInitScript(walletScript(false));            // wallet no longer authorizes this dApp → eth_accounts returns []
+  await page.goto('/guestbook/');
+  await page.evaluate(() => localStorage.setItem('hp-wallet', 'io.metamask')); // pretend a prior session saved it
+  await page.reload();
+  await expect(page.locator('#connect-btn')).toBeVisible();
+  await expect(page.locator('#account')).toBeHidden();
+  expect(await page.evaluate(() => window.__calls)).toContain('eth_accounts');      // tried silently...
+  expect(await page.evaluate(() => localStorage.getItem('hp-wallet'))).toBeNull();  // ...then cleared the stale flag
 });
 
 test('a post flagged deleted is hidden', async ({ page }) => {

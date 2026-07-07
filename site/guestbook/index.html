@@ -592,25 +592,88 @@
     }
   }
 
+  // ---- connection persistence: remember the chosen wallet so a reload silently reconnects ----
+  var WKEY = "hp-wallet";
+  function walletId(provider) {
+    for (var k in providers) { if (providers[k].provider === provider) return providers[k].info.rdns; }
+    if (provider.isRabby) return "io.rabby";
+    if (provider.isBraveWallet) return "com.brave.wallet";
+    if (provider.isMetaMask) return "io.metamask";
+    return "injected";
+  }
+  function saveWallet(provider) { try { localStorage.setItem(WKEY, walletId(provider)); } catch (e) {} }
+  function clearWallet() { try { localStorage.removeItem(WKEY); } catch (e) {} }
+  function savedWallet() { try { return localStorage.getItem(WKEY); } catch (e) { return null; } }
+  function findSavedProvider(id) {
+    if (providers[id]) return providers[id].provider;                       // EIP-6963 announced
+    var list = window.ethereum ? (Array.isArray(window.ethereum.providers) ? window.ethereum.providers : [window.ethereum]) : [];
+    for (var i = 0; i < list.length; i++) {                                 // injected fallback
+      var p = list[i]; if (!p) continue;
+      if (id === "io.rabby" && p.isRabby) return p;
+      if (id === "com.brave.wallet" && p.isBraveWallet) return p;
+      if (id === "io.metamask" && p.isMetaMask) return p;
+      if (id === "injected") return p;
+    }
+    return null;
+  }
+  // shared listener wiring for both explicit connect and silent reconnect (guarded against double-wiring)
+  function wireProvider(provider) {
+    if (!provider || !provider.on || provider.__hpWired) return;
+    provider.__hpWired = true;
+    // reflect account switches (and wallet lock) live from Keplr / MetaMask / etc.
+    provider.on("accountsChanged", function (a) {
+      var na = a && a[0];
+      account = isAddr(na) ? na : null; // null when the wallet is locked or access revoked
+      if (account) toast("Switched to " + shortAddr(account));
+      updateConnectedUI();
+    });
+    provider.on("chainChanged", function () { refreshChainBanner(); });
+  }
+
   async function connect(provider) {
     try {
       var accts = await provider.request({ method: "eth_requestAccounts" });
       if (!accts || !accts.length || !isAddr(accts[0])) { toast("No account returned."); return; }
       account = accts[0]; activeProvider = provider;
+      saveWallet(provider);
       closeWallet(); updateConnectedUI(); ensureInjective();
-      if (provider.on) {
-        // reflect account switches (and wallet lock) live from Keplr / MetaMask / etc.
-        provider.on("accountsChanged", function (a) {
-          var na = a && a[0];
-          account = isAddr(na) ? na : null; // null when the wallet is locked or access revoked
-          if (account) toast("Switched to " + shortAddr(account));
-          updateConnectedUI();
-        });
-        provider.on("chainChanged", function () { refreshChainBanner(); });
-      }
+      wireProvider(provider);
     } catch (err) {
       toast(err && err.code === 4001 ? "Connection cancelled." : "Could not connect wallet.");
     }
+  }
+  // silently re-attach to a previously authorized wallet on reload — eth_accounts never prompts
+  async function silentReconnect(provider) {
+    try {
+      var accts = await provider.request({ method: "eth_accounts" });
+      if (accts && accts.length && isAddr(accts[0])) {
+        account = accts[0]; activeProvider = provider;
+        wireProvider(provider); updateConnectedUI(); refreshChainBanner(); // banner only, no switch popup
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function restoreWallet() {
+    var id = savedWallet();
+    if (!id) return;
+    var conn = $("connect-btn"), origLabel = conn.textContent;
+    conn.textContent = "Reconnecting…"; conn.disabled = true;               // suppress the connect→account flash
+    var reset = function () { conn.textContent = origLabel; conn.disabled = false; };
+    var finish = function (ok) { reset(); if (!ok) clearWallet(); };        // on success, updateConnectedUI already hid the button
+    var tryOnce = function () {
+      var p = findSavedProvider(id);
+      if (!p) return false;
+      silentReconnect(p).then(finish);
+      return true;
+    };
+    if (tryOnce()) return;
+    // wallet may announce late (EIP-6963) — wait briefly, then give up and show Connect
+    var done = false;
+    var onAnnounce = function () { if (done) return; if (tryOnce()) { done = true; window.removeEventListener("eip6963:announceProvider", onAnnounce); } };
+    window.addEventListener("eip6963:announceProvider", onAnnounce);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    setTimeout(function () { if (!done) { done = true; window.removeEventListener("eip6963:announceProvider", onAnnounce); reset(); } }, 3000);
   }
   function updateConnectedUI() {
     var accEl = $("account"), disc = $("disconnect-btn"), conn = $("connect-btn");
@@ -644,7 +707,7 @@
     await switchToInjective();
   }
   $("switch-btn").addEventListener("click", switchToInjective);
-  $("disconnect-btn").addEventListener("click", function () { account = null; activeProvider = null; updateConnectedUI(); });
+  $("disconnect-btn").addEventListener("click", function () { clearWallet(); account = null; activeProvider = null; updateConnectedUI(); });
 
   /* ---------- wallet picker open/close + focus trap ---------- */
   function openWallet() {
@@ -660,6 +723,7 @@
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   $("connect-btn").addEventListener("click", openWallet);
+  restoreWallet();   // reconnect a previously authorized wallet on load (no popup)
   $("wallet-close").addEventListener("click", closeWallet);
   walletOverlay.addEventListener("click", function (e) { if (e.target === walletOverlay) closeWallet(); });
   walletOverlay.addEventListener("keydown", function (e) {
