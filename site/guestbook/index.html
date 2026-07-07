@@ -106,7 +106,8 @@
     border:2px solid; border-color:var(--bevel-lt) var(--bevel-dk) var(--bevel-dk) var(--bevel-lt); }
   .post-head { display:flex; justify-content:space-between; gap:10px; font-size:13px; margin-bottom:6px; }
   .post-who { display:inline-flex; align-items:center; gap:6px; min-width:0; }
-  .post-addr { font-family:'Courier New',monospace; font-weight:bold; color:var(--accent-2); }
+  .post-addr { font-family:'Courier New',monospace; font-weight:bold; color:var(--accent-2); text-decoration:none; }
+  a.post-addr:hover { text-decoration:underline; }
   .post-tier { font-size:15px; line-height:1; cursor:default; }   /* $HELIXPOINT holder badge (filled in async) */
   .post-time { color:var(--ink-dim); white-space:nowrap; }
   .post-del { font-family:var(--comic); font-size:11px; cursor:pointer; color:#fff; background:var(--bad); padding:2px 8px; margin-left:8px;
@@ -335,7 +336,12 @@
     if (isAddr(p.addr)) li.dataset.addr = p.addr;                 // annotate() reads this to look up the holder badge
     var head = document.createElement("div"); head.className = "post-head";
     var who = document.createElement("span"); who.className = "post-who";
-    var addr = document.createElement("span"); addr.className = "post-addr"; addr.textContent = shortAddr(p.addr); // textContent = XSS-safe
+    var addr = document.createElement(isAddr(p.addr) ? "a" : "span"); addr.className = "post-addr";
+    addr.textContent = shortAddr(p.addr);                         // textContent = XSS-safe
+    if (isAddr(p.addr)) {                                          // sender links to their injscan account (new tab)
+      var inj = GB.evmToInj(p.addr);
+      if (inj) { addr.href = "https://injscan.com/account/" + inj; addr.target = "_blank"; addr.rel = "noopener noreferrer"; addr.title = "View " + p.addr + " on injscan ↗"; }
+    }
     var tier = document.createElement("span"); tier.className = "post-tier"; // filled in by annotate() from the cached holder map
     who.appendChild(addr); who.appendChild(tier);
     var time = document.createElement("span"); time.className = "post-time"; time.textContent = relTime(p.ts);

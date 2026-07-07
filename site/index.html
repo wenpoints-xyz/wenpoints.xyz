@@ -145,7 +145,8 @@
   .gb-peek-list { list-style: none; margin: 0; padding: 0; }
   .gb-peek-list li { padding: 4px 0; border-top: 1px dotted var(--bevel-lt); line-height: 1.35; }
   .gb-peek-list li:first-child { border-top: 0; }
-  .gb-peek-addr { color: var(--accent-2); font-family: monospace; font-size: 12px; margin-right: 7px; }
+  .gb-peek-addr { color: var(--accent-2); font-family: monospace; font-size: 12px; margin-right: 7px; text-decoration: none; }
+  a.gb-peek-addr:hover { text-decoration: underline; }
   .gb-peek-msg { color: var(--ink); word-break: break-word; }
   .gb-peek-more { display: inline-block; margin-top: 7px; font-size: 12px; color: var(--accent-2); }
   .gb-peek-msg a.ext { color: var(--accent-2); text-decoration: underline; cursor: pointer; word-break: break-all; }
@@ -626,7 +627,7 @@
       p += 64;                                              // timestamp (unused)
       var del = parseInt(d.slice(p, p + 64), 16) === 1; p += 64;
       var mlen = parseInt(d.slice(p, p + 64), 16); p += 64;
-      out.push({ addr: shortAddr(author), msg: hexToUtf8(d.slice(p, p + mlen * 2)), deleted: del });
+      out.push({ addr: shortAddr(author), full: author, msg: hexToUtf8(d.slice(p, p + mlen * 2)), deleted: del });
       p += mlen * 2;
     }
     return out;
@@ -711,7 +712,8 @@
     listEl.textContent = "";                                    // clear the skeleton
     posts.forEach(function (p) {
       var li = document.createElement("li");
-      var a = document.createElement("span"); a.className = "gb-peek-addr"; a.textContent = p.addr;
+      var a = document.createElement(p.full ? "a" : "span"); a.className = "gb-peek-addr"; a.textContent = p.addr;
+      if (p.full) { a.href = "https://injscan.com/account/" + p.full; a.target = "_blank"; a.rel = "noopener noreferrer"; } // injscan redirects 0x -> inj1
       var m = document.createElement("span"); m.className = "gb-peek-msg";
       var txt = (p.msg || "").replace(/\s+/g, " ").trim();
       if (txt.length > 120) txt = txt.slice(0, 120) + "…";

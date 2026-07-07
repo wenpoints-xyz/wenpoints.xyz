@@ -44,6 +44,14 @@ test('homepage teaser shows the 3 most-recent posts, newest first', async ({ pag
   await expect(page.locator('#gb-peek-list li').first()).toContainText('0x4444…4444');
 });
 
+test('homepage teaser address links to injscan', async ({ page }) => {
+  await route(page, [ makePost('0x1111111111111111111111111111111111111111', 0, 'gm') ]);
+  await page.goto('/');
+  const a = page.locator('#gb-peek-list .gb-peek-addr').first();
+  await expect(a).toHaveAttribute('href', /^https:\/\/injscan\.com\/account\/0x1111111111111111111111111111111111111111$/i);
+  await expect(a).toHaveAttribute('target', '_blank');
+});
+
 test('homepage teaser hides deleted posts and renders markup inert', async ({ page }) => {
   await route(page, [
     makePost('0x1111111111111111111111111111111111111111', 0, '<img src=x onerror="window.__xss=1">'),

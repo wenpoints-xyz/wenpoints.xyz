@@ -73,6 +73,15 @@ test('loads posts from contract state', async ({ page }) => {
   await expect(page.locator('#posts .post-addr').first()).toHaveText('0x1111…1111');
 });
 
+test('sender address links to its injscan account in a new tab', async ({ page }) => {
+  await routeState(page, { posts: [post(0, '0x68D85663DaE6Aed5F102b7ec1f5551b890Ce1db3', 'gm')] });
+  await page.goto('/guestbook/');
+  const a = page.locator('#posts .post-addr').first();
+  await expect(a).toHaveAttribute('href', 'https://injscan.com/account/inj1drv9vc76u6hdtugzklkp7423hzgvu8dn5uvvqf'); // 0x -> inj1
+  await expect(a).toHaveAttribute('target', '_blank');
+  await expect(a).toHaveAttribute('rel', /noopener/);
+});
+
 test('a stored message with markup renders as inert text', async ({ page }) => {
   const payload = '<img src=x onerror="window.__xss=1"><script>window.__xss=2<\/script>';
   await routeState(page, { posts: [post(0, '0x2222222222222222222222222222222222222222', payload)] });
