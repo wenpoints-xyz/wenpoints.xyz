@@ -422,21 +422,27 @@
     if (added) posts.sort(function (a, b) { return a.index > b.index ? -1 : a.index < b.index ? 1 : 0; }); // newest-first
     renderList();
   }
+  // Scan the chain newest-block-first, one chunk at a time, rendering each chunk as it lands so
+  // messages appear ASAP instead of waiting for the whole deploy->latest range. PostDeleted sits at a
+  // higher block than its PostCreated, so scanning backward sees the delete before the post (correct).
   async function loadInitial() {
     $("shimmer").hidden = false;
-    try {
-      var latest = await GB.blockNumber();
-      var logs = await GB.getEvents(GB.CONFIG.DEPLOY_BLOCK, latest);
-      lastBlock = latest;
-      loading = false;
-      await ingest(logs);
-    } catch (e) {
-      loading = false; renderList();
-      toast("Couldn't load the guestbook — retrying…");
-      setTimeout(loadInitial, 6000); return;
-    } finally { $("shimmer").hidden = true; }
+    var latest;
+    try { latest = await GB.blockNumber(); }
+    catch (e) { toast("Couldn't reach the chain — retrying…"); setTimeout(loadInitial, 6000); return; }
+    lastBlock = latest;                                   // the 12s poll continues from here
+    var to = latest, CHUNK = GB.CONFIG.LOG_CHUNK, deploy = GB.CONFIG.DEPLOY_BLOCK;
+    while (to >= deploy) {
+      var from = Math.max(deploy, to - CHUNK + 1);
+      try {
+        var logs = await GB.getEvents(from, to);         // posts+deletes only (tips deferred to loadTips)
+        if (logs.length) { await ingest(logs); $("shimmer").hidden = true; }  // render this chunk immediately
+      } catch (e) { /* skip a flaky chunk, keep scanning */ }
+      to = from - 1;
+    }
+    loading = false; $("shimmer").hidden = true; renderList();   // final pass -> empty state if truly none
     startPoll();
-    loadTips();   // messages are already on screen; tips load async and fill in (like the holder badges)
+    loadTips();                                          // async enrichment; never gates the message feed
   }
   // Deferred: the initial scan is posts+deletes only (messages show ASAP); tips are a separate
   // enrichment pass so they never gate message display, growing tip volume can't slow the feed.
