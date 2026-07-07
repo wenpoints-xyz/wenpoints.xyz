@@ -293,6 +293,46 @@
     return provider.request({ method: "eth_sendTransaction", params: [{ from: from, to: TIP.WINJ, value: "0x" + BigInt(amount).toString(16), data: TIP.SEL_DEPOSIT }] });
   }
 
+  // ---- state reads via eth_call (replaces scanning the whole event history) ----
+  var SEL_COUNT = "0x06661abd", SEL_POSTSBLOB = "0xef48eaa4", SEL_GETTIPS = "0x34472457";
+  function ethCall(data) { return rpc("eth_call", [{ to: CONFIG.CONTRACT, data: data }, "latest"]); }
+  function count() { return ethCall(SEL_COUNT).then(function (r) { return parseInt(r, 16) || 0; }); }
+
+  // getPostsBlob(offset,limit) -> packed bytes: per post index(32) author(32) ts(32) deleted(32) msgLen(32) msg(msgLen)
+  function getPosts(offset, limit) { return ethCall(SEL_POSTSBLOB + padUint(offset) + padUint(limit)).then(decodePostsBlob); }
+  function decodePostsBlob(hexret) {
+    var h = strip0x(hexret || "");
+    if (h.length < 128) return [];
+    var len = parseInt(h.slice(64, 128), 16);            // returns (bytes): [dataOffset][len][data]
+    var d = h.slice(128, 128 + len * 2), out = [], p = 0;
+    while (p + 320 <= d.length) {                          // 160-byte fixed header = 320 hex
+      var index = toBigInt("0x" + d.slice(p, p + 64)); p += 64;
+      var author = "0x" + d.slice(p + 24, p + 64); p += 64; // low 20 bytes of the word
+      var ts = parseInt(d.slice(p, p + 64), 16); p += 64;
+      var del = parseInt(d.slice(p, p + 64), 16) === 1; p += 64;
+      var mlen = parseInt(d.slice(p, p + 64), 16); p += 64;
+      out.push({ index: index, author: author, timestamp: ts, deleted: del, message: hexToUtf8(d.slice(p, p + mlen * 2)) });
+      p += mlen * 2;
+    }
+    return out;
+  }
+
+  // getTips(uint256[] indices, address[] tokens) -> flat uint256[] row-major (index-major, token-minor)
+  function encodeGetTipsCall(indices, tokens) {
+    var offTok = 0x40 + 32 + indices.length * 32;         // after [offIdx][offTok][idxLen][...idx]
+    return SEL_GETTIPS + padUint(0x40) + padUint(offTok)
+      + padUint(indices.length) + indices.map(function (i) { return padUint(i); }).join("")
+      + padUint(tokens.length) + tokens.map(function (t) { return padAddr(t); }).join("");
+  }
+  function getTips(indices, tokens) { return ethCall(encodeGetTipsCall(indices, tokens)).then(decodeUintArray); }
+  function decodeUintArray(hexret) {
+    var h = strip0x(hexret || "");
+    if (h.length < 128) return [];
+    var len = parseInt(h.slice(64, 128), 16), out = [];   // [offset][len][elements]
+    for (var i = 0; i < len; i++) out.push(toBigInt("0x" + h.slice(128 + i * 64, 192 + i * 64)));
+    return out;
+  }
+
   window.GB = {
     CONFIG: CONFIG,
     encodePostCalldata: encodePostCalldata, encodeDeleteCalldata: encodeDeleteCalldata,
@@ -304,6 +344,8 @@
     TIP: TIP, tipTokenBySymbol: tipTokenBySymbol, tipTokenByAddr: tipTokenByAddr,
     encodeApprove: encodeApprove, encodeTipCalldata: encodeTipCalldata,
     decodeTipped: decodeTipped, allowance: allowance, erc20BalanceOf: erc20BalanceOf, nativeBalance: nativeBalance,
-    sendApprove: sendApprove, sendTip: sendTip, sendWrap: sendWrap, toRaw: toRaw, fromRaw: fromRaw
+    sendApprove: sendApprove, sendTip: sendTip, sendWrap: sendWrap, toRaw: toRaw, fromRaw: fromRaw,
+    count: count, getPosts: getPosts, getTips: getTips,
+    decodePostsBlob: decodePostsBlob, decodeUintArray: decodeUintArray, encodeGetTipsCall: encodeGetTipsCall
   };
 })();

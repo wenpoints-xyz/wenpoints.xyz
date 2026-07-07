@@ -364,6 +364,32 @@ contract GuestbookTest is Test {
         assertEq(tok.balanceOf(bob), 50);
     }
 
+    // ---- V3 state reads ----
+    function test_tip_updatesTipTotal_andGetTips() public {
+        vm.prank(bob); gb.post("tip me");
+        _fundApprove(usdc, alice, 100);
+        vm.prank(alice); gb.tip(0, address(usdc), 100);
+        assertEq(gb.tipTotal(0, address(usdc)), 100);
+        uint256[] memory idx = new uint256[](1); idx[0] = 0;
+        address[] memory toks = new address[](2); toks[0] = address(usdc); toks[1] = address(other);
+        uint256[] memory out = gb.getTips(idx, toks);
+        assertEq(out.length, 2);
+        assertEq(out[0], 100); // usdc tipped
+        assertEq(out[1], 0);   // other never tipped
+    }
+
+    function test_getPostsBlob_packsIndexDeletedAndClamps() public {
+        vm.prank(bob); gb.post("hello");        // 5-byte message
+        gb.deletePost(0);                        // admin = this contract
+        bytes memory blob = gb.getPostsBlob(0, 10);
+        assertEq(blob.length, 165);              // 160 header + 5 msg
+        uint256 idx0; uint256 del;
+        assembly { idx0 := mload(add(blob, 0x20)) del := mload(add(blob, add(0x20, 96))) }
+        assertEq(idx0, 0);
+        assertEq(del, 1);                        // deleted flag = 4th word
+        assertEq(gb.getPostsBlob(5, 10).length, 0); // offset past end -> empty
+    }
+
     function _repeat(uint256 n) internal pure returns (string memory) {
         bytes memory b = new bytes(n);
         for (uint256 i; i < n; i++) b[i] = "x";

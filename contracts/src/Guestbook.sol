@@ -25,9 +25,10 @@ contract Guestbook is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable
     mapping(address => bool) public isAdmin;
     uint256 public adminCount;
     mapping(uint256 => bool) public deleted; // index => hidden by an admin
-    // ---- V2 (tipping) state: APPEND ONLY, above __gap. OZ v5 keeps ReentrancyGuard/UUPS/Initializable
-    //      in ERC-7201 namespaced storage, so this is the only new sequential slot. ----
-    mapping(address => bool) public tipTokenAllowed; // admin allowlist of tip tokens (USDC/USDT/wINJ)
+    // ---- V2/V3 state: APPEND ONLY, above __gap. OZ v5 keeps ReentrancyGuard/UUPS/Initializable in
+    //      ERC-7201 namespaced storage, so these are the only new sequential slots. ----
+    mapping(address => bool) public tipTokenAllowed;                 // V2: admin allowlist (USDC/USDT/wINJ)
+    mapping(uint256 => mapping(address => uint256)) public tipTotal; // V3: [index][token] => cumulative tipped
 
     event PostCreated(address indexed author, uint256 indexed index, string message);
     event PostDeleted(uint256 indexed index, address indexed by);
@@ -114,8 +115,37 @@ contract Guestbook is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable
         if (amount == 0) revert ZeroAmount();
         if (!tipTokenAllowed[token]) revert TipTokenNotAllowed();
         address author = _posts[index].author;
-        IERC20(token).safeTransferFrom(msg.sender, author, amount); // effects are event-only; interaction last
+        tipTotal[index][token] += amount;                           // effects before interaction (CEI)
+        IERC20(token).safeTransferFrom(msg.sender, author, amount);
         emit Tipped(index, msg.sender, token, amount);
+    }
+
+    // ---- state reads (so clients read posts/tips via eth_call pagination, not a full log scan) ----
+    /// @notice Posts [offset, offset+limit) as a tightly packed blob the client parses sequentially:
+    ///         per post -> index(32) | author(32, low 20) | timestamp(32) | deleted(32, 0/1) | msgLen(32) | msg(msgLen).
+    ///         One eth_call replaces scanning the whole event history.
+    function getPostsBlob(uint256 offset, uint256 limit) external view returns (bytes memory blob) {
+        uint256 n = _posts.length;
+        if (offset >= n) return blob;
+        uint256 end = offset + limit;
+        if (end > n) end = n;
+        for (uint256 i = offset; i < end; i++) {
+            Post storage p = _posts[i];
+            bytes memory m = bytes(p.message);
+            blob = bytes.concat(
+                blob,
+                abi.encodePacked(uint256(i), uint256(uint160(p.author)), uint256(p.timestamp), deleted[i] ? uint256(1) : uint256(0), m.length, m)
+            );
+        }
+    }
+
+    /// @notice Cumulative tips for each (index, token) pair, row-major flat: out[i*tokens.length + j].
+    function getTips(uint256[] calldata indices, address[] calldata tokens) external view returns (uint256[] memory out) {
+        out = new uint256[](indices.length * tokens.length);
+        uint256 k;
+        for (uint256 i; i < indices.length; i++) {
+            for (uint256 j; j < tokens.length; j++) out[k++] = tipTotal[indices[i]][tokens[j]];
+        }
     }
 
     /// @notice Admin-only: allow/disallow a token for tipping.
@@ -140,6 +170,6 @@ contract Guestbook is Initializable, UUPSUpgradeable, ReentrancyGuardUpgradeable
     function _authorizeUpgrade(address) internal override onlyAdmin {}
 
     /// @dev Storage gap so future versions can add state without clobbering the proxy layout.
-    ///      Shrunk 46 -> 45 when `tipTokenAllowed` was appended in V2.
-    uint256[45] private __gap;
+    ///      46 -> 45 (tipTokenAllowed, V2) -> 44 (tipTotal, V3).
+    uint256[44] private __gap;
 }

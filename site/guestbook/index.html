@@ -296,7 +296,6 @@
   /* ---------- posts (read from PostCreated events on Injective EVM) ---------- */
   var posts = [];             // newest-first: { addr, text, ts, index(BigInt) }
   var shown = PAGE;
-  var lastBlock = GB.CONFIG.DEPLOY_BLOCK - 1;
   var loading = true;
   var pollTimer = null;
   var deletedSet = {};        // index.toString() -> true (hidden by an admin)
@@ -390,76 +389,47 @@
   }
   GB.fetchHolders().then(function (m) { holderMap = m; annotate(); });   // one deferred fetch per page load
 
-  /* ---------- read posts from chain (PostCreated + PostDeleted + Tipped events) ---------- */
-  var seenIndex = {}, tipsByIndex = {}, seenTip = {};   // tipsByIndex[index][tokenAddr] = BigInt total
-  async function ingest(logs) {
-    var added = false;
-    for (var i = 0; i < logs.length; i++) {
-      var t0 = (logs[i].topics[0] || "").toLowerCase();
-      if (t0 === GB.CONFIG.TOPIC_DELETE.toLowerCase()) {           // admin hid a post
-        deletedSet[GB.decodePostDeleted(logs[i]).index.toString()] = true; added = true; continue;
-      }
-      if (t0 === GB.TIP.TOPIC_TIPPED.toLowerCase()) {              // a tip — aggregate per index+token
-        var lg = logs[i], dk = parseInt(lg.blockNumber, 16) + ":" + parseInt(lg.logIndex || "0x0", 16);
-        if (!seenTip[dk]) {
-          seenTip[dk] = 1;
-          var tp = GB.decodeTipped(lg), ik = tp.index.toString(), tk = tp.token.toLowerCase();
-          var bucket = (tipsByIndex[ik] = tipsByIndex[ik] || {});
-          bucket[tk] = (bucket[tk] || 0n) + tp.amount;
-          added = true;
-        }
-        continue;
-      }
-      if (t0 !== GB.CONFIG.TOPIC_POST.toLowerCase()) continue;     // defensive: only decode PostCreated below
-      var d = GB.decodePostCreated(logs[i]);
-      var key = d.index.toString();
-      if (seenIndex[key]) continue;
-      seenIndex[key] = 1;
-      var ts = await GB.blockTime(d.blockNumber);
-      posts.push({ addr: d.author, text: d.message, ts: ts, index: d.index });
-      added = true;
+  /* ---------- read posts + tips from CONTRACT STATE (eth_call, not a full event scan) ---------- */
+  var seenIndex = {}, tipsByIndex = {};                 // seenIndex kept for the debug seed helpers
+  var TIP_ADDRS = GB.TIP.TOKENS.map(function (t) { return t.address; });
+
+  // One consistent read: count() -> getPosts(0,count) -> getTips(all). ~3 eth_calls, flat regardless of
+  // how much history exists (replaces the O(history) log scan that grew every day and hammered the node).
+  async function loadState() {
+    var n = await GB.count();
+    if (n === 0) { posts = []; deletedSet = {}; tipsByIndex = {}; loading = false; renderList(); return; }
+    var rows = await GB.getPosts(0, n);                  // [{index,author,timestamp,deleted,message}]
+    var np = [], nd = {};
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      np.push({ addr: r.author, text: r.message, ts: r.timestamp * 1000, index: r.index });
+      if (r.deleted) nd[r.index.toString()] = true;
     }
-    if (added) posts.sort(function (a, b) { return a.index > b.index ? -1 : a.index < b.index ? 1 : 0; }); // newest-first
-    renderList();
+    np.sort(function (a, b) { return a.index > b.index ? -1 : a.index < b.index ? 1 : 0; }); // newest-first
+    posts = np; deletedSet = nd;
+    try {                                               // tips: one batched call for every post index
+      var idx = rows.map(function (r) { return r.index; });
+      var flat = await GB.getTips(idx, TIP_ADDRS);      // row-major: index-major, token-minor
+      var tb = {};
+      for (var a = 0; a < idx.length; a++) {
+        for (var b = 0; b < TIP_ADDRS.length; b++) {
+          var v = flat[a * TIP_ADDRS.length + b];
+          if (v && v > 0n) (tb[idx[a].toString()] = tb[idx[a].toString()] || {})[TIP_ADDRS[b].toLowerCase()] = v;
+        }
+      }
+      tipsByIndex = tb;
+    } catch (e) { /* tips non-essential; posts already set */ }
+    loading = false; renderList();
   }
-  // Scan the chain newest-block-first, one chunk at a time, rendering each chunk as it lands so
-  // messages appear ASAP instead of waiting for the whole deploy->latest range. PostDeleted sits at a
-  // higher block than its PostCreated, so scanning backward sees the delete before the post (correct).
   async function loadInitial() {
     $("shimmer").hidden = false;
-    var latest;
-    try { latest = await GB.blockNumber(); }
-    catch (e) { toast("Couldn't reach the chain — retrying…"); setTimeout(loadInitial, 6000); return; }
-    lastBlock = latest;                                   // the 12s poll continues from here
-    var to = latest, CHUNK = GB.CONFIG.LOG_CHUNK, deploy = GB.CONFIG.DEPLOY_BLOCK;
-    while (to >= deploy) {
-      var from = Math.max(deploy, to - CHUNK + 1);
-      try {
-        var logs = await GB.getEvents(from, to);         // posts+deletes only (tips deferred to loadTips)
-        if (logs.length) { await ingest(logs); $("shimmer").hidden = true; }  // render this chunk immediately
-      } catch (e) { /* skip a flaky chunk, keep scanning */ }
-      to = from - 1;
-    }
-    loading = false; $("shimmer").hidden = true; renderList();   // final pass -> empty state if truly none
+    try { await loadState(); }
+    catch (e) { $("shimmer").hidden = true; toast("Couldn't load the guestbook — retrying…"); setTimeout(loadInitial, 6000); return; }
+    $("shimmer").hidden = true;
     startPoll();
-    loadTips();                                          // async enrichment; never gates the message feed
   }
-  // Deferred: the initial scan is posts+deletes only (messages show ASAP); tips are a separate
-  // enrichment pass so they never gate message display, growing tip volume can't slow the feed.
-  async function loadTips() {
-    try { await ingest(await GB.getEvents(GB.CONFIG.DEPLOY_BLOCK, lastBlock, [GB.TIP.TOPIC_TIPPED])); }
-    catch (e) { /* tips are non-essential; posts already rendered */ }
-  }
-  async function refresh() { // pull new events since lastBlock (after a write, and by the poll loop)
-    try {
-      var latest = await GB.blockNumber();
-      if (latest <= lastBlock) return;
-      var logs = await GB.getEvents(lastBlock + 1, latest, [GB.CONFIG.TOPIC_POST, GB.CONFIG.TOPIC_DELETE, GB.TIP.TOPIC_TIPPED]);
-      lastBlock = latest;
-      await ingest(logs);
-    } catch (e) { /* transient RPC hiccup; next tick retries */ }
-  }
-  function startPoll() { if (!pollTimer) pollTimer = setInterval(refresh, 12000); } // live updates via polling
+  async function refresh() { try { await loadState(); } catch (e) { /* transient; next tick retries */ } }
+  function startPoll() { if (!pollTimer) pollTimer = setInterval(refresh, 12000); } // live updates via re-read
   // confirm a write by watching for the post to appear (event/state is consistent across RPC
   // nodes; eth_getTransactionReceipt by hash is flaky on Injective's load-balanced RPC)
   function waitForPost(message, author, timeoutMs) {
